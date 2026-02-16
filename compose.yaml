@@ -1,0 +1,10 @@
+services:
+  manager:
+    build: ./manager
+    ports:
+      - ${MANAGER_PORT}:80
+
+  worker:
+    build: ./worker
+    deploy:
+      replicas: ${WORKERS}
