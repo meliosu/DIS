@@ -1,10 +1,16 @@
 services:
   manager:
     build: ./manager
+    init: true
     ports:
       - ${MANAGER_PORT}:80
+    environment:
+      - RUST_LOG=${LOG}
 
   worker:
     build: ./worker
+    init: true
+    environment:
+      - RUST_LOG=${LOG}
     deploy:
       replicas: ${WORKERS}
