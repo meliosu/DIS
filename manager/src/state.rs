@@ -20,7 +20,7 @@ impl Deref for State {
 #[derive(Default)]
 pub struct InnerState {
     pub workers: Mutex<Vec<Worker>>,
-    pub requests: Mutex<HashMap<uuid::Uuid, Crack>>,
+    pub requests: Mutex<HashMap<uuid::Uuid, Arc<Mutex<Crack>>>>,
 }
 
 #[derive(Clone, Debug)]

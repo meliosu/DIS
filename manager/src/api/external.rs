@@ -3,7 +3,9 @@ use axum::extract::{Json, Query, State};
 use common::response::ErrorResponse;
 use axum::http::StatusCode;
 use common::types::CreateTaskRequest;
+use tokio::sync::Mutex;
 use uuid::Uuid;
+use std::sync::Arc;
 
 use crate::config::CONFIG;
 use crate::state::{Crack, CrackWorker};
@@ -28,12 +30,17 @@ async fn crack_hash(State(state): State<crate::state::State>, Json(r): Json<Crac
     let alphabet_size = CONFIG.alphabet.len();
     let total_count = alphabet_size * (alphabet_size.pow(r.max_length as u32) - 1) / (alphabet_size - 1);
 
-    let mut workers = state.workers.lock().await;
+    let workers = {
+        let workers = state.workers.lock().await;
+        workers.clone()
+    };
 
-    for worker in std::mem::take(&mut *workers) {
+    let mut healthy_workers = Vec::new();
+
+    for worker in workers {
         match worker.client.healthcheck().await {
             Ok(_) => {
-                workers.push(worker);
+                healthy_workers.push(worker);
             }
 
             Err(_) => {
@@ -42,8 +49,13 @@ async fn crack_hash(State(state): State<crate::state::State>, Json(r): Json<Crac
         }
     }
 
-    if workers.is_empty() {
+    if healthy_workers.is_empty() {
         return Err(ErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "there are no workers available"));
+    }
+
+    {
+        let mut workers = state.workers.lock().await;
+        *workers = healthy_workers.clone();
     }
 
     let request_id = Uuid::new_v4();
@@ -52,9 +64,9 @@ async fn crack_hash(State(state): State<crate::state::State>, Json(r): Json<Crac
 
     let mut crack_workers = Vec::new();
 
-    for (i, worker) in workers.iter().enumerate() {
-        let remainder = total_count % workers.len();
-        let base = total_count / workers.len();
+    for (i, worker) in healthy_workers.iter().enumerate() {
+        let remainder = total_count % healthy_workers.len();
+        let base = total_count / healthy_workers.len();
         let extra = if i < remainder { 1 } else { 0 };
 
         let start = i * base + i.min(remainder);
@@ -98,15 +110,20 @@ async fn crack_hash(State(state): State<crate::state::State>, Json(r): Json<Crac
     };
 
     let mut requests = state.requests.lock().await;
-    requests.insert(request_id.clone(), crack);
+    requests.insert(request_id.clone(), Arc::new(Mutex::new(crack)));
 
     Ok(Json(CrackResponse { request_id }))
 }
 
 async fn get_crack_status(State(state): State<crate::state::State>, Query(r): Query<StatusRequest>) -> Result<Json<StatusResponse>, ErrorResponse> {
-    let requests = state.requests.lock().await;
+    let crack = {
+        let requests = state.requests.lock().await;
 
-    let crack = requests.get(&r.request_id).ok_or(ErrorResponse::new(StatusCode::NOT_FOUND, format!("request with id {} doesn't exist", r.request_id)))?;
+        requests.get(&r.request_id).cloned()
+            .ok_or(ErrorResponse::new(StatusCode::NOT_FOUND, format!("request with id {} doesn't exist", r.request_id)))?
+    };
+
+    let crack = crack.lock().await;
 
     let left: usize = crack.workers.iter().map(|w| w.end - w.curr).sum();
     let done = crack.total_count - left;

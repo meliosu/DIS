@@ -4,9 +4,11 @@ use crate::config::CONFIG;
 use crate::state::{CrackWorker, State};
 
 pub async fn redistribute(state: &State) {
-    let mut requests = state.requests.lock().await;
+    let requests = state.requests.lock().await.clone();
 
-    for (id, crack) in requests.iter_mut() {
+    for (id, arc_crack) in requests {
+        let mut crack = arc_crack.lock().await;
+
         let done: usize = crack.workers.iter().map(|w| w.curr - w.start).sum();
 
         if done == crack.total_count {
@@ -32,27 +34,39 @@ pub async fn redistribute(state: &State) {
             continue;
         }
 
-        let mut workers = state.workers.lock().await;
-        workers.retain(|w1| !timed_out.iter().any(|w2| w1.address == w2.address));
+        drop(crack);
 
-        for worker in std::mem::take(&mut *workers) {
-            if let Err(_) = worker.client.healthcheck().await {
-                continue;
+        let workers = state.workers.lock().await;
+        let mut workers_clone = workers.clone();
+        drop(workers);
+
+        workers_clone.retain(|w1| !timed_out.iter().any(|w2| w1.address == w2.address));
+
+        let mut healthy_workers = Vec::new();
+
+        for worker in workers_clone {
+            if worker.client.healthcheck().await.is_ok() {
+                healthy_workers.push(worker);
             }
-
-            workers.push(worker);
         }
 
-        if workers.is_empty() {
+        {
+            let mut workers = state.workers.lock().await;
+            *workers = healthy_workers.clone();
+        }
+
+        if healthy_workers.is_empty() {
             log::error!("Request {}: no healthy workers available", id);
             continue;
         }
 
+        let mut crack = arc_crack.lock().await;
+
         for (range_start, range_end) in &ranges {
             let range_size = range_end - range_start;
-            let worker_count = workers.len();
+            let worker_count = healthy_workers.len();
 
-            for (i, worker) in workers.iter().enumerate() {
+            for (i, worker) in healthy_workers.iter().enumerate() {
                 let remainder = range_size % worker_count;
                 let base = range_size / worker_count;
                 let extra = if i < remainder { 1 } else { 0 };

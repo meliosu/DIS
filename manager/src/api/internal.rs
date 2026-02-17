@@ -33,10 +33,14 @@ async fn register_worker(State(state): State<crate::state::State>, Json(r): Json
 }
 
 async fn update_task(State(state): State<crate::state::State>, Query(q): Query<UpdateTaskQuery>, Json(r): Json<UpdateTaskRequest>) -> Result<(), ErrorResponse> {
-    let mut requests = state.requests.lock().await;
+    let crack = {
+        let requests = state.requests.lock().await;
 
-    let crack = requests.get_mut(&q.request_id)
-        .ok_or(ErrorResponse::new(StatusCode::NOT_FOUND, format!("request with id {} doesn't exist", q.request_id)))?;
+        requests.get(&q.request_id).cloned()
+            .ok_or(ErrorResponse::new(StatusCode::NOT_FOUND, format!("request with id {} doesn't exist", q.request_id)))?
+    };
+
+    let mut crack = crack.lock().await;
 
     let worker = crack.workers
         .iter_mut()
