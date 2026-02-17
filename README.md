@@ -22,9 +22,8 @@ Submit an MD5 hash to crack by brute-force.
 
 **Request**
 
+**POST /api/hash/crack**
 ```
-POST /api/hash/crack
-
 {
   "hash": "fc93e9967a2da79dd6a37b332c2d2e17",
   "maxLength": 5
@@ -52,9 +51,7 @@ Poll the status of a previously submitted crack request.
 
 **Request**
 
-```
-GET /api/hash/status?requestId=a1b2c3d4-e5f6-7890-abcd-ef1234567890
-```
+**GET /api/hash/status?requestId=a1b2c3d4-e5f6-7890-abcd-ef1234567890**
 
 | Parameter   | Type   | Description                              |
 |-------------|--------|------------------------------------------|
