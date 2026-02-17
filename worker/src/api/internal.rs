@@ -60,6 +60,8 @@ async fn create_crack_task(State(state): State<crate::state::State>, Json(r): Js
                 start = r.start + i + 1;
                 last = tokio::time::Instant::now();
             }
+
+            tokio::task::consume_budget().await;
         }
     });
 
