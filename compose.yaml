@@ -18,3 +18,4 @@ services:
       - RUST_LOG=${LOG}
     deploy:
       replicas: ${WORKERS}
+    restart: unless-stopped
