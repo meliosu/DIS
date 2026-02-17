@@ -8,6 +8,8 @@ services:
       - ${MANAGER_PORT}:80
     environment:
       - RUST_LOG=${LOG}
+      - TIMEOUT=${TIMEOUT}
+      - ALPHABET=${ALPHABET}
 
   worker:
     build:
