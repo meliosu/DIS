@@ -1,6 +1,8 @@
 services:
   manager:
-    build: ./manager
+    build:
+      context: .
+      dockerfile: ./manager/Dockerfile
     init: true
     ports:
       - ${MANAGER_PORT}:80
@@ -8,7 +10,9 @@ services:
       - RUST_LOG=${LOG}
 
   worker:
-    build: ./worker
+    build:
+      context: .
+      dockerfile: ./worker/Dockerfile
     init: true
     environment:
       - RUST_LOG=${LOG}
