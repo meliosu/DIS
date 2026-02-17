@@ -25,7 +25,7 @@ Submit an MD5 hash to crack by brute-force.
 **Request**
 
 **POST /api/hash/crack**
-```
+```json
 {
   "hash": "fc93e9967a2da79dd6a37b332c2d2e17",
   "maxLength": 5
