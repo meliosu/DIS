@@ -76,8 +76,6 @@ async fn crack_hash(State(state): State<crate::state::State>, Json(r): Json<Crac
             end,
         };
 
-        log::info!("request: {create_task_request:?}");
-
         worker.client.create_task(&create_task_request).await?;
     }
 

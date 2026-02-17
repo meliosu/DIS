@@ -49,10 +49,6 @@ async fn create_crack_task(State(state): State<crate::state::State>, Json(r): Js
 
                 start = r.start + i + 1;
             }
-
-            if i == r.end - r.start - 1 {
-                log::info!("end: {start}");
-            }
         }
     });
 
