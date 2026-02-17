@@ -4,10 +4,12 @@ A distributed MD5 hash cracking system.
 
 ## Architecture
 
+<p align="center"> <img width="743" height="769" alt="architecture" src="https://github.com/user-attachments/assets/ab7013d7-dbab-41c6-8b80-d5f02b0dfa6a" /> </p>
+
 The system has two service types communicating over HTTP.
 
 **Manager** exposes two HTTP servers:
-- **External API** (port 80) — accepts crack requests from users and returns their status.
+- **External API** (port 80) — accepts crack requests from users and returns their status. The API description is [below](#external-api).
 - **Internal API** (port 7123) — handles worker registration and task updates.
 
 A background task runs periodically to detect timed-out workers and redistribute their remaining work to healthy workers.
@@ -116,6 +118,8 @@ All configuration is done through environment variables in the `.env` file:
 | `ALPHABET`     | `abcdefghijklmnopqrstuvwxyz0123456789` | Alphabet used for brute-forcing the hash                          |
 
 ## Deploy using Docker
+
+Assuming you have [Docker](https://www.docker.com/) installed, just run
 
 ```bash
 docker compose up --build
