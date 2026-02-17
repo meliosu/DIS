@@ -1,0 +1,111 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "CrackHash Worker Internal API",
+    "description": "Internal API exposed by each worker node. Used by the manager to assign hash cracking tasks and check worker health.",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/internal/api/worker/hash/crack/task": {
+      "post": {
+        "summary": "Create a crack task",
+        "description": "Assigns a hash cracking task to the worker. The worker will brute-force all permutations in the given index range [start, end) over the provided alphabet up to maxLength, and report progress back to the manager.",
+        "operationId": "createCrackTask",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTaskRequest"
+              },
+              "example": {
+                "hash": "5d41402abc4b2a76b9719d911017c592",
+                "requestId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                "alphabet": "abcdefghijklmnopqrstuvwxyz0123456789",
+                "maxLength": 5,
+                "start": 0,
+                "end": 500000
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Task accepted successfully."
+          },
+          "500": {
+            "description": "Internal server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/api/worker/healthcheck": {
+      "get": {
+        "summary": "Health check",
+        "description": "Returns 200 if the worker is alive and able to accept requests.",
+        "operationId": "healthcheck",
+        "responses": {
+          "200": {
+            "description": "Worker is healthy."
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CreateTaskRequest": {
+        "type": "object",
+        "required": ["hash", "requestId", "alphabet", "maxLength", "start", "end"],
+        "properties": {
+          "hash": {
+            "type": "string",
+            "pattern": "^[a-fA-F0-9]{32}$",
+            "description": "The MD5 hash to crack (32 hex characters)."
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUID of the parent crack request from the manager."
+          },
+          "alphabet": {
+            "type": "string",
+            "description": "Character set to use for generating candidate strings."
+          },
+          "maxLength": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Maximum length of candidate strings to generate."
+          },
+          "start": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Start index (inclusive) of the permutation range to search."
+          },
+          "end": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "End index (exclusive) of the permutation range to search."
+          }
+        }
+      },
+      "ErrorMessage": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Error message."
+          }
+        }
+      }
+    }
+  }
+}

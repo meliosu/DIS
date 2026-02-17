@@ -1,0 +1,167 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "CrackHash Manager Internal API",
+    "description": "Internal API used by workers to register themselves and report task updates to the manager.",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/internal/api/manager/register": {
+      "post": {
+        "summary": "Register a worker",
+        "description": "Called by a worker on startup to register itself with the manager.",
+        "operationId": "registerWorker",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              },
+              "example": {
+                "workerAddress": "e5f32aa537e5:7124"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Worker registered successfully."
+          },
+          "500": {
+            "description": "Internal server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/api/manager/hash/crack/task/update": {
+      "patch": {
+        "summary": "Update task progress",
+        "description": "Called by a worker to report progress on an assigned segment. Includes strings found in the segments.",
+        "operationId": "updateTask",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "query",
+            "required": true,
+            "description": "UUID of the crack request this update belongs to.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTaskRequest"
+              },
+              "example": {
+                "segmentStart": 0,
+                "segmentEnd": 50000,
+                "data": []
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Task progress updated successfully."
+          },
+          "400": {
+            "description": "Invalid task update.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorMessage"
+                },
+                "example": {
+                  "error": "invalid task update"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Crack request not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorMessage"
+                },
+                "example": {
+                  "error": "request with id a1b2c3d4-e5f6-7890-abcd-ef1234567890 doesn't exist"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorMessage"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "RegisterRequest": {
+        "type": "object",
+        "required": ["workerAddress"],
+        "properties": {
+          "workerAddress": {
+            "type": "string",
+            "description": "The hostname and port of the worker (e.g. \"e5f32aa537e5:7124\")."
+          }
+        }
+      },
+      "UpdateTaskRequest": {
+        "type": "object",
+        "required": ["segmentStart", "segmentEnd", "data"],
+        "properties": {
+          "segmentStart": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Start index of the segment being reported."
+          },
+          "segmentEnd": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "End index (exclusive) of the segment that has been processed."
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Strings whose MD5 hash matched the target hash in this segment."
+          }
+        }
+      },
+      "ErrorMessage": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Error message."
+          }
+        }
+      }
+    }
+  }
+}
