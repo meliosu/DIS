@@ -5,7 +5,7 @@ use axum::http::StatusCode;
 use common::types::CreateTaskRequest;
 use uuid::Uuid;
 
-use crate::constants::{ALPHABET, TIMEOUT};
+use crate::config::CONFIG;
 use crate::state::{Crack, CrackWorker};
 use crate::types::{CrackRequest, CrackResponse, CrackStatus, StatusRequest, StatusResponse};
 
@@ -21,7 +21,7 @@ async fn crack_hash(State(state): State<crate::state::State>, Json(r): Json<Crac
         return Err(ErrorResponse::new(StatusCode::BAD_REQUEST, "maxLength should be greater than 0"));
     }
 
-    let alphabet_size = ALPHABET.len();
+    let alphabet_size = CONFIG.alphabet.len();
     let total_count = alphabet_size * (alphabet_size.pow(r.max_length as u32) - 1) / (alphabet_size - 1);
 
     let mut workers = state.workers.lock().await;
@@ -70,7 +70,7 @@ async fn crack_hash(State(state): State<crate::state::State>, Json(r): Json<Crac
         let create_task_request = CreateTaskRequest {
             hash: r.hash.clone(),
             request_id,
-            alphabet: ALPHABET.to_string(),
+            alphabet: CONFIG.alphabet.clone(),
             max_length: r.max_length,
             start,
             end,
@@ -82,7 +82,7 @@ async fn crack_hash(State(state): State<crate::state::State>, Json(r): Json<Crac
     }
 
     let crack = Crack {
-        alphabet: ALPHABET.to_string(),
+        alphabet: CONFIG.alphabet.clone(),
         max_length: r.max_length,
         total_count,
         data: Vec::new(),
@@ -110,7 +110,7 @@ async fn get_crack_status(State(state): State<crate::state::State>, Query(r): Qu
     for worker in &crack.workers {
         done += worker.curr - worker.start;
 
-        if worker.curr < worker.end && now - worker.last_update >= TIMEOUT {
+        if worker.curr < worker.end && now - worker.last_update >= CONFIG.timeout {
             is_timeout = true;
         }
     }
