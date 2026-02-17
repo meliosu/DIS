@@ -1,7 +1,8 @@
 use anyhow::{anyhow, bail};
 
+use common::constants::MANAGER_INTERNAL_PORT;
+
 const EXTERNAL_PORT: u16 = 80;
-const INTERNAL_PORT: u16 = 7123;
 
 #[tokio::main]
 async fn main() {
@@ -29,14 +30,16 @@ async fn run_service(port: u16, router: axum::Router) -> anyhow::Result<()> {
 }
 
 async fn run() -> anyhow::Result<()> {
+    let state = manager::state::State::default();
+
     tokio::select! {
-        internal_result = run_service(INTERNAL_PORT, manager::api::internal::router()) => {
+        internal_result = run_service(MANAGER_INTERNAL_PORT, manager::api::internal::router(state.clone())) => {
             if let Err(e) = internal_result {
                 bail!("internal service: {e}");
             }
         }
 
-        external_result = run_service(EXTERNAL_PORT, manager::api::external::router()) => {
+        external_result = run_service(EXTERNAL_PORT, manager::api::external::router(state.clone())) => {
             if let Err(e) = external_result {
                 bail!("external service: {e}");
             }

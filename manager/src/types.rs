@@ -11,26 +11,26 @@ pub(crate) enum CrackStatus {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct CrackRequest {
-    hash: String,
-    max_length: usize,
+    pub hash: String,
+    pub max_length: usize,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct CrackResponse {
-    request_id: uuid::Uuid,
+    pub request_id: uuid::Uuid,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct StatusRequest {
-    request_id: uuid::Uuid,
+    pub request_id: uuid::Uuid,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct StatusResponse {
-    status: CrackStatus,
-    progress: usize,
-    data: Option<Vec<String>>,
+    pub status: CrackStatus,
+    pub progress: usize,
+    pub data: Option<Vec<String>>,
 }

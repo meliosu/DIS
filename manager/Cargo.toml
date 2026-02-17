@@ -8,7 +8,8 @@ anyhow = "1.0.101"
 axum = "0.8.8"
 env_logger = "0.11.9"
 log = "0.4.29"
-reqwest = { version = "0.13.2", features = ["json"] }
+reqwest = { version = "0.13.2", features = ["json", "query"] }
 serde = { version = "1.0.228", features = ["derive"] }
 tokio = { version = "1.49.0", features = ["full"] }
 uuid = { version = "1.21.0", features = ["v4", "serde"] }
+common = { path = "../common" }
