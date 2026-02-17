@@ -16,7 +16,7 @@ pub static CONFIG: LazyLock<Config> = LazyLock::new(|| {
         Err(e) => {
             log::error!("{e}, using default timeout, which is {DEFAULT_TIMEOUT}");
             DEFAULT_TIMEOUT
-        },
+        }
     };
 
     let alphabet = match var::<String>("ALPHABET") {
@@ -25,7 +25,7 @@ pub static CONFIG: LazyLock<Config> = LazyLock::new(|| {
         Err(e) => {
             log::error!("{e}, using default alphabet, which is {DEFAULT_ALPHABET}");
             DEFAULT_ALPHABET.to_string()
-        },
+        }
     };
 
     let alphabet = match check_valid_alphabet(&alphabet) {
@@ -38,7 +38,7 @@ pub static CONFIG: LazyLock<Config> = LazyLock::new(|| {
 
     Config {
         timeout: Duration::from_secs(timeout),
-        alphabet
+        alphabet,
     }
 });
 
@@ -56,21 +56,24 @@ fn check_valid_alphabet(alphabet: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn var<T: FromStr>(name: &str) -> anyhow::Result<Option<T>> 
-    where T::Err: Sync + Send + std::fmt::Display,
+fn var<T: FromStr>(name: &str) -> anyhow::Result<Option<T>>
+where
+    T::Err: Sync + Send + std::fmt::Display,
 {
     let var = match std::env::var(name) {
         Ok(var) => var,
         Err(e) => match e {
             VarError::NotPresent => {
                 return Ok(None);
-            },
+            }
 
             VarError::NotUnicode(_) => {
                 bail!("env var {name} contains non-unicode symbols");
-            },
+            }
         },
     };
 
-    var.parse().map_err(|e| anyhow!("parsing env var {name}: {e}")).map(|value| Some(value))
+    var.parse()
+        .map_err(|e| anyhow!("parsing env var {name}: {e}"))
+        .map(|value| Some(value))
 }

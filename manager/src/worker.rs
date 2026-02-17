@@ -2,8 +2,8 @@ use common::constants::WORKER_HEALTHCHECK_PATH;
 use reqwest::IntoUrl;
 use reqwest::Url;
 
-use common::types::CreateTaskRequest;
 use common::constants::WORKER_CRACK_TASK_PATH;
+use common::types::CreateTaskRequest;
 
 #[derive(Clone, Debug)]
 pub struct Client {
@@ -18,10 +18,7 @@ impl Client {
             .tls_danger_accept_invalid_certs(true)
             .build()?;
 
-        Ok(Self {
-            client,
-            base: url,
-        })
+        Ok(Self { client, base: url })
     }
 
     pub async fn create_task(&self, r: &CreateTaskRequest) -> anyhow::Result<()> {

@@ -97,13 +97,18 @@ pub async fn redistribute(state: &State) {
 
                 log::info!(
                     "Request {}: redistributing range {}-{} to worker {}",
-                    id, start, end, worker.address
+                    id,
+                    start,
+                    end,
+                    worker.address
                 );
 
                 if let Err(e) = worker.client.create_task(&create_task_request).await {
                     log::error!(
                         "Request {}: failed to send task to worker {}: {}",
-                        id, worker.address, e
+                        id,
+                        worker.address,
+                        e
                     );
                 }
             }

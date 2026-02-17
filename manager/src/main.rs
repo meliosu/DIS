@@ -26,7 +26,9 @@ async fn run_service(name: &str, port: u16, router: axum::Router) -> anyhow::Res
 
     log::info!("{name} listening on {listen_addr}");
 
-    axum::serve(listener, router).await.map_err(|e| anyhow!("{e}"))
+    axum::serve(listener, router)
+        .await
+        .map_err(|e| anyhow!("{e}"))
 }
 
 async fn run() -> anyhow::Result<()> {

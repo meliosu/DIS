@@ -1,8 +1,8 @@
 use reqwest::IntoUrl;
 use reqwest::Url;
 
+use common::constants::{MANAGER_REGISTER_PATH, MANAGER_UPDATE_TASK_PATH};
 use common::types::{RegisterRequest, UpdateTaskQuery, UpdateTaskRequest};
-use common::constants::{MANAGER_UPDATE_TASK_PATH, MANAGER_REGISTER_PATH};
 
 pub struct Client {
     base: Url,
@@ -16,10 +16,7 @@ impl Client {
             .tls_danger_accept_invalid_certs(true)
             .build()?;
 
-        Ok(Self {
-            client,
-            base: url,
-        })
+        Ok(Self { client, base: url })
     }
 
     pub async fn register(&self, r: &RegisterRequest) -> anyhow::Result<()> {

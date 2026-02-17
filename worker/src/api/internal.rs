@@ -1,9 +1,12 @@
-use axum::routing::{get, post};
 use axum::extract::{Json, State};
+use axum::routing::{get, post};
 
 use common::response::ErrorResponse;
 use common::types::{UpdateTaskQuery, UpdateTaskRequest};
-use common::{constants::{WORKER_CRACK_TASK_PATH, WORKER_HEALTHCHECK_PATH}, types::CreateTaskRequest};
+use common::{
+    constants::{WORKER_CRACK_TASK_PATH, WORKER_HEALTHCHECK_PATH},
+    types::CreateTaskRequest,
+};
 
 use crate::constants::{INTERVAL, INTERVAL_COUNT, UPDATE_COUNT};
 use crate::permutations::permutations;
@@ -15,7 +18,10 @@ pub fn router(state: crate::state::State) -> axum::Router {
         .with_state(state)
 }
 
-async fn create_crack_task(State(state): State<crate::state::State>, Json(r): Json<CreateTaskRequest>) -> Result<(), ErrorResponse> {
+async fn create_crack_task(
+    State(state): State<crate::state::State>,
+    Json(r): Json<CreateTaskRequest>,
+) -> Result<(), ErrorResponse> {
     tokio::task::spawn(async move {
         let alphabet = r.alphabet.chars().collect::<Vec<_>>();
 
@@ -24,7 +30,11 @@ async fn create_crack_task(State(state): State<crate::state::State>, Json(r): Js
         let mut start = r.start;
         let mut last = tokio::time::Instant::now();
 
-        for (i, perm) in permutations(&alphabet, r.max_length).skip(r.start).take(r.end - r.start).enumerate() {
+        for (i, perm) in permutations(&alphabet, r.max_length)
+            .skip(r.start)
+            .take(r.end - r.start)
+            .enumerate()
+        {
             let word = perm.iter().collect::<String>();
             let hash = md5::compute(&word);
             let hash = hex::encode(&*hash);
@@ -35,9 +45,10 @@ async fn create_crack_task(State(state): State<crate::state::State>, Json(r): Js
 
             let update_frequency = ((r.end - r.start) / UPDATE_COUNT).max(1);
 
-            let should_send_update = (i != 0 && i % INTERVAL_COUNT == 0 && last.elapsed() > INTERVAL) 
-                || (i != 0 && i % update_frequency == 0) 
-                || i == r.end - r.start - 1;
+            let should_send_update =
+                (i != 0 && i % INTERVAL_COUNT == 0 && last.elapsed() > INTERVAL)
+                    || (i != 0 && i % update_frequency == 0)
+                    || i == r.end - r.start - 1;
 
             if should_send_update {
                 let query = UpdateTaskQuery {
@@ -46,7 +57,13 @@ async fn create_crack_task(State(state): State<crate::state::State>, Json(r): Js
 
                 if !data.is_empty() {
                     let words = data.join(", ");
-                    log::info!("Request {}: found words in range {}-{}: {}", r.request_id, r.start, r.end, words);
+                    log::info!(
+                        "Request {}: found words in range {}-{}: {}",
+                        r.request_id,
+                        r.start,
+                        r.end,
+                        words
+                    );
                 }
 
                 let request = UpdateTaskRequest {

@@ -1,11 +1,11 @@
-use axum::routing::{get, post};
 use axum::extract::{Json, Query, State};
-use common::response::ErrorResponse;
 use axum::http::StatusCode;
+use axum::routing::{get, post};
+use common::response::ErrorResponse;
 use common::types::CreateTaskRequest;
+use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
-use std::sync::Arc;
 
 use crate::config::CONFIG;
 use crate::state::{Crack, CrackWorker};
@@ -18,17 +18,27 @@ pub fn router(state: crate::state::State) -> axum::Router {
         .with_state(state)
 }
 
-async fn crack_hash(State(state): State<crate::state::State>, Json(r): Json<CrackRequest>) -> Result<Json<CrackResponse>, ErrorResponse> {
+async fn crack_hash(
+    State(state): State<crate::state::State>,
+    Json(r): Json<CrackRequest>,
+) -> Result<Json<CrackResponse>, ErrorResponse> {
     if r.max_length == 0 {
-        return Err(ErrorResponse::new(StatusCode::BAD_REQUEST, "maxLength should be greater than 0"));
+        return Err(ErrorResponse::new(
+            StatusCode::BAD_REQUEST,
+            "maxLength should be greater than 0",
+        ));
     }
 
     if r.hash.len() != 32 || !r.hash.chars().all(|c| c.is_ascii_hexdigit()) {
-        return Err(ErrorResponse::new(StatusCode::BAD_REQUEST, "`hash` is not a valid md5 hash"));
+        return Err(ErrorResponse::new(
+            StatusCode::BAD_REQUEST,
+            "`hash` is not a valid md5 hash",
+        ));
     }
 
     let alphabet_size = CONFIG.alphabet.len();
-    let total_count = alphabet_size * (alphabet_size.pow(r.max_length as u32) - 1) / (alphabet_size - 1);
+    let total_count =
+        alphabet_size * (alphabet_size.pow(r.max_length as u32) - 1) / (alphabet_size - 1);
 
     let workers = {
         let workers = state.workers.lock().await;
@@ -50,7 +60,10 @@ async fn crack_hash(State(state): State<crate::state::State>, Json(r): Json<Crac
     }
 
     if healthy_workers.is_empty() {
-        return Err(ErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "there are no workers available"));
+        return Err(ErrorResponse::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "there are no workers available",
+        ));
     }
 
     {
@@ -60,7 +73,13 @@ async fn crack_hash(State(state): State<crate::state::State>, Json(r): Json<Crac
 
     let request_id = Uuid::new_v4();
 
-    log::info!("Request {}: hash {}, max. length {}, search space {}", request_id, r.hash, r.max_length, total_count);
+    log::info!(
+        "Request {}: hash {}, max. length {}, search space {}",
+        request_id,
+        r.hash,
+        r.max_length,
+        total_count
+    );
 
     let mut crack_workers = Vec::new();
 
@@ -95,7 +114,13 @@ async fn crack_hash(State(state): State<crate::state::State>, Json(r): Json<Crac
             end,
         };
 
-        log::info!("Request {}: giving search range {}-{} to worker {}", request_id, start, end, worker.address);
+        log::info!(
+            "Request {}: giving search range {}-{} to worker {}",
+            request_id,
+            start,
+            end,
+            worker.address
+        );
 
         worker.client.create_task(&create_task_request).await?;
     }
@@ -115,12 +140,20 @@ async fn crack_hash(State(state): State<crate::state::State>, Json(r): Json<Crac
     Ok(Json(CrackResponse { request_id }))
 }
 
-async fn get_crack_status(State(state): State<crate::state::State>, Query(r): Query<StatusRequest>) -> Result<Json<StatusResponse>, ErrorResponse> {
+async fn get_crack_status(
+    State(state): State<crate::state::State>,
+    Query(r): Query<StatusRequest>,
+) -> Result<Json<StatusResponse>, ErrorResponse> {
     let crack = {
         let requests = state.requests.lock().await;
 
-        requests.get(&r.request_id).cloned()
-            .ok_or(ErrorResponse::new(StatusCode::NOT_FOUND, format!("request with id {} doesn't exist", r.request_id)))?
+        requests
+            .get(&r.request_id)
+            .cloned()
+            .ok_or(ErrorResponse::new(
+                StatusCode::NOT_FOUND,
+                format!("request with id {} doesn't exist", r.request_id),
+            ))?
     };
 
     let crack = crack.lock().await;

@@ -1,9 +1,9 @@
-use axum::routing::{post, patch};
 use axum::extract::{Json, Query, State};
+use axum::routing::{patch, post};
 
-use common::response::ErrorResponse;
-use common::types::{RegisterRequest, UpdateTaskRequest, UpdateTaskQuery};
 use common::constants::{MANAGER_REGISTER_PATH, MANAGER_UPDATE_TASK_PATH};
+use common::response::ErrorResponse;
+use common::types::{RegisterRequest, UpdateTaskQuery, UpdateTaskRequest};
 use reqwest::StatusCode;
 
 use crate::state::Worker;
@@ -15,7 +15,10 @@ pub fn router(state: crate::state::State) -> axum::Router {
         .with_state(state)
 }
 
-async fn register_worker(State(state): State<crate::state::State>, Json(r): Json<RegisterRequest>) -> Result<(), ErrorResponse> {
+async fn register_worker(
+    State(state): State<crate::state::State>,
+    Json(r): Json<RegisterRequest>,
+) -> Result<(), ErrorResponse> {
     let addr = format!("http://{}", r.worker_address);
     let client = crate::worker::Client::new(addr)?;
 
@@ -32,20 +35,33 @@ async fn register_worker(State(state): State<crate::state::State>, Json(r): Json
     Ok(())
 }
 
-async fn update_task(State(state): State<crate::state::State>, Query(q): Query<UpdateTaskQuery>, Json(r): Json<UpdateTaskRequest>) -> Result<(), ErrorResponse> {
+async fn update_task(
+    State(state): State<crate::state::State>,
+    Query(q): Query<UpdateTaskQuery>,
+    Json(r): Json<UpdateTaskRequest>,
+) -> Result<(), ErrorResponse> {
     let crack = {
         let requests = state.requests.lock().await;
 
-        requests.get(&q.request_id).cloned()
-            .ok_or(ErrorResponse::new(StatusCode::NOT_FOUND, format!("request with id {} doesn't exist", q.request_id)))?
+        requests
+            .get(&q.request_id)
+            .cloned()
+            .ok_or(ErrorResponse::new(
+                StatusCode::NOT_FOUND,
+                format!("request with id {} doesn't exist", q.request_id),
+            ))?
     };
 
     let mut crack = crack.lock().await;
 
-    let worker = crack.workers
+    let worker = crack
+        .workers
         .iter_mut()
         .find(|w| w.curr == r.segment_start)
-        .ok_or(ErrorResponse::new(StatusCode::BAD_REQUEST, format!("invalid task update")))?;
+        .ok_or(ErrorResponse::new(
+            StatusCode::BAD_REQUEST,
+            format!("invalid task update"),
+        ))?;
 
     worker.last_update = tokio::time::Instant::now();
     worker.curr = r.segment_end;

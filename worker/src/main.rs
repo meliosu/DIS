@@ -7,7 +7,6 @@ use worker::constants::{INTERNAL_PORT, MANAGER_HOSTNAME};
 async fn main() {
     env_logger::init();
 
-
     if let Err(e) = run().await {
         log::error!("{e}");
     }
@@ -19,14 +18,15 @@ async fn run() -> anyhow::Result<()> {
     let client = worker::manager::Client::new(manager_addr)
         .map_err(|e| anyhow!("creating manager client: {e}"))?;
 
-    let hostname = std::env::var("HOSTNAME")
-        .map_err(|e| anyhow!("getting HOSTNAME variable: {e}"))?;
+    let hostname =
+        std::env::var("HOSTNAME").map_err(|e| anyhow!("getting HOSTNAME variable: {e}"))?;
 
     let worker_address = format!("{hostname}:{INTERNAL_PORT}");
 
-    client.register(&RegisterRequest {
-        worker_address,
-    }).await.map_err(|e| anyhow!("registering with manager: {e}"))?;
+    client
+        .register(&RegisterRequest { worker_address })
+        .await
+        .map_err(|e| anyhow!("registering with manager: {e}"))?;
 
     let addr = format!("0.0.0.0:{INTERNAL_PORT}");
     let listener = tokio::net::TcpListener::bind(&addr)
