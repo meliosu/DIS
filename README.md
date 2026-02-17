@@ -104,7 +104,7 @@ GET /api/hash/status?requestId=a1b2c3d4-e5f6-7890-abcd-ef1234567890
 |------------|-----------------|-----------------------------------------------------|
 | `status`   | `string`        | `IN_PROGRESS`, `READY`, or `ERROR`                  |
 | `progress` | `number`        | Completion percentage (0–100)                       |
-| `data`     | `string[]|null` | Matched plaintext strings, or `null` if none found  |
+| `data`     | `string[] or null` | Matched plaintext strings, or `null` if none found  |
 
 ## Configuration
 
