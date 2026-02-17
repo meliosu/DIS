@@ -36,8 +36,8 @@ async fn crack_hash(State(state): State<crate::state::State>, Json(r): Json<Crac
                 workers.push(worker);
             }
 
-            Err(e) => {
-                log::error!("worker {} failed healthcheck: {}", worker.address, e);
+            Err(_) => {
+                log::error!("worker {} failed healthcheck", worker.address);
             }
         }
     }
@@ -89,6 +89,7 @@ async fn crack_hash(State(state): State<crate::state::State>, Json(r): Json<Crac
     }
 
     let crack = Crack {
+        hash: r.hash.clone(),
         alphabet: CONFIG.alphabet.clone(),
         max_length: r.max_length,
         total_count,
@@ -107,21 +108,14 @@ async fn get_crack_status(State(state): State<crate::state::State>, Query(r): Qu
 
     let crack = requests.get(&r.request_id).ok_or(ErrorResponse::new(StatusCode::NOT_FOUND, format!("request with id {} doesn't exist", r.request_id)))?;
 
-    let now = tokio::time::Instant::now();
-    let mut done = 0;
-    let mut is_timeout = false;
+    let left: usize = crack.workers.iter().map(|w| w.end - w.curr).sum();
+    let done = crack.total_count - left;
 
-    for worker in &crack.workers {
-        done += worker.curr - worker.start;
-
-        if worker.curr < worker.end && now - worker.last_update >= CONFIG.timeout {
-            is_timeout = true;
-        }
-    }
+    let has_alive_workers = crack.workers.iter().any(|w| w.curr < w.end);
 
     let status = if done == crack.total_count {
         CrackStatus::Ready
-    } else if is_timeout {
+    } else if !has_alive_workers {
         CrackStatus::Error
     } else {
         CrackStatus::InProgress

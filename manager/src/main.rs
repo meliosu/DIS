@@ -34,6 +34,18 @@ async fn run() -> anyhow::Result<()> {
 
     let state = manager::state::State::default();
 
+    {
+        let state = state.clone();
+        tokio::spawn(async move {
+            let interval = CONFIG.timeout / 2;
+
+            loop {
+                tokio::time::sleep(interval).await;
+                manager::redistribute::redistribute(&state).await;
+            }
+        });
+    }
+
     tokio::select! {
         internal_result = run_service("internal service", MANAGER_INTERNAL_PORT, manager::api::internal::router(state.clone())) => {
             if let Err(e) = internal_result {

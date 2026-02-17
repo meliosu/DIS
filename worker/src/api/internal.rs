@@ -5,7 +5,7 @@ use common::response::ErrorResponse;
 use common::types::{UpdateTaskQuery, UpdateTaskRequest};
 use common::{constants::{WORKER_CRACK_TASK_PATH, WORKER_HEALTHCHECK_PATH}, types::CreateTaskRequest};
 
-use crate::constants::UPDATE_COUNT;
+use crate::constants::{INTERVAL, INTERVAL_COUNT, UPDATE_COUNT};
 use crate::permutations::permutations;
 
 pub fn router(state: crate::state::State) -> axum::Router {
@@ -22,6 +22,7 @@ async fn create_crack_task(State(state): State<crate::state::State>, Json(r): Js
         let mut data = Vec::new();
 
         let mut start = r.start;
+        let mut last = tokio::time::Instant::now();
 
         for (i, perm) in permutations(&alphabet, r.max_length).skip(r.start).take(r.end - r.start).enumerate() {
             let word = perm.iter().collect::<String>();
@@ -34,7 +35,11 @@ async fn create_crack_task(State(state): State<crate::state::State>, Json(r): Js
 
             let update_frequency = ((r.end - r.start) / UPDATE_COUNT).max(1);
 
-            if (i != 0 && i % update_frequency == 0) || i == r.end - r.start - 1 {
+            let should_send_update = (i != 0 && i % INTERVAL_COUNT == 0 && last.elapsed() > INTERVAL) 
+                || (i != 0 && i % update_frequency == 0) 
+                || i == r.end - r.start - 1;
+
+            if should_send_update {
                 let query = UpdateTaskQuery {
                     request_id: r.request_id.clone(),
                 };
@@ -53,6 +58,7 @@ async fn create_crack_task(State(state): State<crate::state::State>, Json(r): Js
                 _ = state.client.update(&query, &request).await;
 
                 start = r.start + i + 1;
+                last = tokio::time::Instant::now();
             }
         }
     });

@@ -23,12 +23,13 @@ pub struct InnerState {
     pub requests: Mutex<HashMap<uuid::Uuid, Crack>>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Worker {
     pub address: String,
     pub client: crate::worker::Client,
 }
 
+#[derive(Debug)]
 pub struct CrackWorker {
     pub last_update: tokio::time::Instant,
     pub worker: Worker,
@@ -38,6 +39,7 @@ pub struct CrackWorker {
 }
 
 pub struct Crack {
+    pub hash: String,
     pub alphabet: String,
     pub max_length: usize,
     pub total_count: usize,

@@ -5,7 +5,7 @@ use reqwest::Url;
 use common::types::CreateTaskRequest;
 use common::constants::WORKER_CRACK_TASK_PATH;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Client {
     base: Url,
     client: reqwest::Client,

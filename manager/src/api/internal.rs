@@ -47,13 +47,9 @@ async fn update_task(State(state): State<crate::state::State>, Query(q): Query<U
     worker.curr = r.segment_end;
     crack.data.extend(r.data);
 
-    let mut done = 0;
+    let left: usize = crack.workers.iter().map(|w| w.end - w.curr).sum();
 
-    for worker in &crack.workers {
-        done += worker.curr - worker.start;
-    }
-
-    if done == crack.total_count {
+    if left == 0 {
         if !crack.data.is_empty() {
             let words = crack.data.join(", ");
             log::info!("Request {}: finished, found words: {}", q.request_id, words);
