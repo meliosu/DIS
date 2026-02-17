@@ -1,6 +1,6 @@
 use serde::{Serialize, Deserialize};
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub(crate) enum CrackStatus {
     Ready,
@@ -8,26 +8,26 @@ pub(crate) enum CrackStatus {
     Error,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct CrackRequest {
     pub hash: String,
     pub max_length: usize,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct CrackResponse {
     pub request_id: uuid::Uuid,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct StatusRequest {
     pub request_id: uuid::Uuid,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct StatusResponse {
     pub status: CrackStatus,

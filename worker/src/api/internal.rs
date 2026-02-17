@@ -19,36 +19,39 @@ async fn create_crack_task(State(state): State<crate::state::State>, Json(r): Js
     tokio::task::spawn(async move {
         let alphabet = r.alphabet.chars().collect::<Vec<_>>();
 
-        for update in 0..UPDATE_COUNT {
-            let mut data = Vec::new();
+        let mut data = Vec::new();
 
-            let step_size = (r.end - r.start) / UPDATE_COUNT;
-            let start = r.start + update * step_size;
-            let end = r.start + (update + 1) * step_size;
+        let mut start = r.start;
 
-            for perm in permutations(&alphabet, r.max_length).skip(start).take(end - start) {
-                let word: String = perm.iter().collect();
-                let hash = md5::compute(&word.as_bytes());
-                let hash_hex = hex::encode(&*hash);
+        for (i, perm) in permutations(&alphabet, r.max_length).skip(r.start).take(r.end - r.start).enumerate() {
+            let word = perm.iter().collect::<String>();
+            let hash = md5::compute(&word);
+            let hash = hex::encode(&*hash);
 
-                if hash_hex == r.hash {
-                    data.push(word);
-                }
+            if hash == r.hash {
+                data.push(word);
             }
 
-            let query = UpdateTaskQuery {
-                request_id: r.request_id.clone(),
-            };
+            let update_frequency = ((r.end - r.start) / UPDATE_COUNT).max(1);
 
-            let request = UpdateTaskRequest {
-                segment_start: start,
-                segment_end: end,
-                data,
-            };
+            if (i != 0 && i % update_frequency == 0) || i == r.end - r.start - 1 {
+                let query = UpdateTaskQuery {
+                    request_id: r.request_id.clone(),
+                };
 
-            match state.client.update(&query, &request).await {
-                Err(_) => break,
-                _ => {}
+                let request = UpdateTaskRequest {
+                    segment_start: start,
+                    segment_end: r.start + i + 1,
+                    data: std::mem::take(&mut data),
+                };
+
+                _ = state.client.update(&query, &request).await;
+
+                start = r.start + i + 1;
+            }
+
+            if i == r.end - r.start - 1 {
+                log::info!("end: {start}");
             }
         }
     });

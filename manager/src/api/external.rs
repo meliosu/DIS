@@ -46,25 +46,39 @@ async fn crack_hash(State(state): State<crate::state::State>, Json(r): Json<Crac
     let mut crack_workers = Vec::new();
 
     for (i, worker) in workers.iter().enumerate() {
-        let start = i * (total_count / workers.len());
-        let end = (i + 1) * (total_count / workers.len());
+        let remainder = total_count % workers.len();
+        let base = total_count / workers.len();
+        let extra = if i < remainder { 1 } else { 0 };
 
-        crack_workers.push(CrackWorker {
+        let start = i * base + i.min(remainder);
+        let end = start + base + extra;
+
+        if start == end {
+            continue;
+        }
+
+        let crack_worker = CrackWorker {
             last_update: tokio::time::Instant::now(),
             worker: worker.clone(),
             start,
             end,
             curr: start,
-        });
+        };
 
-        worker.client.create_task(&CreateTaskRequest {
+        crack_workers.push(crack_worker);
+
+        let create_task_request = CreateTaskRequest {
             hash: r.hash.clone(),
             request_id,
             alphabet: ALPHABET.to_string(),
             max_length: r.max_length,
             start,
             end,
-        }).await?;
+        };
+
+        log::info!("request: {create_task_request:?}");
+
+        worker.client.create_task(&create_task_request).await?;
     }
 
     let crack = Crack {
