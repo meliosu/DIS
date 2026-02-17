@@ -18,14 +18,16 @@ pub fn router(state: crate::state::State) -> axum::Router {
 async fn register_worker(State(state): State<crate::state::State>, Json(r): Json<RegisterRequest>) -> Result<(), ErrorResponse> {
     let addr = format!("http://{}", r.worker_address);
     let client = crate::worker::Client::new(addr)?;
+
     let worker = Worker {
-        address: r.worker_address,
+        address: r.worker_address.clone(),
         client,
     };
 
     let mut workers = state.workers.lock().await;
     workers.push(worker);
-    drop(workers);
+
+    log::info!("worker {} registered", r.worker_address);
 
     Ok(())
 }
@@ -45,7 +47,20 @@ async fn update_task(State(state): State<crate::state::State>, Query(q): Query<U
     worker.curr = r.segment_end;
     crack.data.extend(r.data);
 
-    drop(requests);
+    let mut done = 0;
+
+    for worker in &crack.workers {
+        done += worker.curr - worker.start;
+    }
+
+    if done == crack.total_count {
+        if !crack.data.is_empty() {
+            let words = crack.data.join(", ");
+            log::info!("Request {}: finished, found words: {}", q.request_id, words);
+        } else {
+            log::info!("Request {}: didn't find any words", q.request_id);
+        }
+    }
 
     Ok(())
 }

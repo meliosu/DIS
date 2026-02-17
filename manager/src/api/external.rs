@@ -21,6 +21,10 @@ async fn crack_hash(State(state): State<crate::state::State>, Json(r): Json<Crac
         return Err(ErrorResponse::new(StatusCode::BAD_REQUEST, "maxLength should be greater than 0"));
     }
 
+    if r.hash.len() != 32 || !r.hash.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(ErrorResponse::new(StatusCode::BAD_REQUEST, "`hash` is not a valid md5 hash"));
+    }
+
     let alphabet_size = CONFIG.alphabet.len();
     let total_count = alphabet_size * (alphabet_size.pow(r.max_length as u32) - 1) / (alphabet_size - 1);
 
@@ -43,6 +47,9 @@ async fn crack_hash(State(state): State<crate::state::State>, Json(r): Json<Crac
     }
 
     let request_id = Uuid::new_v4();
+
+    log::info!("Request {}: hash {}, max. length {}, search space {}", request_id, r.hash, r.max_length, total_count);
+
     let mut crack_workers = Vec::new();
 
     for (i, worker) in workers.iter().enumerate() {
@@ -76,6 +83,8 @@ async fn crack_hash(State(state): State<crate::state::State>, Json(r): Json<Crac
             end,
         };
 
+        log::info!("Request {}: giving search range {}-{} to worker {}", request_id, start, end, worker.address);
+
         worker.client.create_task(&create_task_request).await?;
     }
 
@@ -89,9 +98,6 @@ async fn crack_hash(State(state): State<crate::state::State>, Json(r): Json<Crac
 
     let mut requests = state.requests.lock().await;
     requests.insert(request_id.clone(), crack);
-    drop(requests);
-
-    drop(workers);
 
     Ok(Json(CrackResponse { request_id }))
 }
@@ -134,8 +140,6 @@ async fn get_crack_status(State(state): State<crate::state::State>, Query(r): Qu
         progress,
         data,
     };
-
-    drop(requests);
 
     Ok(Json(response))
 }

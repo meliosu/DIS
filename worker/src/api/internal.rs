@@ -39,6 +39,11 @@ async fn create_crack_task(State(state): State<crate::state::State>, Json(r): Js
                     request_id: r.request_id.clone(),
                 };
 
+                if !data.is_empty() {
+                    let words = data.join(", ");
+                    log::info!("Request {}: found words in range {}-{}: {}", r.request_id, r.start, r.end, words);
+                }
+
                 let request = UpdateTaskRequest {
                     segment_start: start,
                     segment_end: r.start + i + 1,
@@ -55,6 +60,4 @@ async fn create_crack_task(State(state): State<crate::state::State>, Json(r): Js
     Ok(())
 }
 
-async fn healthcheck() {
-
-}
+async fn healthcheck() {}
