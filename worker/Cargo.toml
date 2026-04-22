@@ -4,3 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+anyhow = "1.0.102"
+env_logger = "0.11.10"
+lapin = "4.5.0"
+log = "0.4.29"
+mongodb = "3.6.0"
+serde = { version = "1.0.228", features = ["derive"] }
+tokio = { version = "1.52.1", features = ["full"] }
+uuid = { version = "1.23.1", features = ["v4", "serde"] }
+common = { path = "../common/" }
