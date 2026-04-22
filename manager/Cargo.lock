@@ -1747,10 +1747,12 @@ dependencies = [
  "axum",
  "common",
  "env_logger",
+ "futures-util",
  "lapin",
  "log",
  "mongodb",
  "serde",
+ "serde_json",
  "tokio",
  "uuid",
 ]
