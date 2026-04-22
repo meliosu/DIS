@@ -8,14 +8,14 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
+use common::rabbit;
 use common::{
     constants::{
         ALPHABET_ENV, DEFAULT_MANAGER_BIND_ADDR, DEFAULT_MONGO_DB, DEFAULT_MONGO_URI,
-        DEFAULT_RABBITMQ_ADDR, DEFAULT_WORKERS, DLQ_QUEUE, DLX_EXCHANGE, MANAGER_BIND_ADDR_ENV,
-        MONGO_DB_ENV, MONGO_URI_ENV, NUM_WORKERS_ENV, RABBITMQ_ADDR_ENV, REPUBLISH_INTERVAL_SECS,
-        REQUESTS_COLLECTION, REQUEUE_DELIVERY_LIMIT, RESULTS_DLQ_ROUTING_KEY, RESULTS_EXCHANGE,
-        RESULTS_QUEUE, RESULTS_ROUTING_KEY, TASKS_COLLECTION, TASKS_DLQ_ROUTING_KEY,
-        TASKS_EXCHANGE, TASKS_QUEUE, TASKS_ROUTING_KEY,
+        DEFAULT_RABBITMQ_ADDR, DEFAULT_WORKERS, DLQ_QUEUE, MANAGER_BIND_ADDR_ENV, MONGO_DB_ENV,
+        MONGO_URI_ENV, NUM_WORKERS_ENV, RABBITMQ_ADDR_ENV, REPUBLISH_INTERVAL_SECS,
+        REQUESTS_COLLECTION, RESULTS_QUEUE, TASKS_COLLECTION, TASKS_EXCHANGE, TASKS_QUEUE,
+        TASKS_ROUTING_KEY,
     },
     types::{
         CrackHashRequest, CrackHashResponse, CrackStatusRequest, CrackStatusResponse,
@@ -24,13 +24,14 @@ use common::{
 };
 use futures_util::{StreamExt, TryStreamExt};
 use lapin::{
-    BasicProperties, Channel, Connection, ConnectionProperties, ExchangeKind,
+    BasicProperties, Channel, Connection, ConnectionProperties,
     options::{
         BasicAckOptions, BasicConsumeOptions, BasicNackOptions, BasicPublishOptions,
-        ExchangeDeclareOptions, QueueBindOptions, QueueDeclareOptions,
+        QueueDeclareOptions,
     },
-    types::{AMQPValue, FieldTable},
+    types::FieldTable,
 };
+use manager::helpers::{split_evenly, total_combinations};
 use mongodb::{
     Client, Collection,
     bson::{Bson, DateTime, doc},
@@ -39,8 +40,6 @@ use mongodb::{
 use serde::{Deserialize, Serialize};
 use tokio::{net::TcpListener, time::sleep};
 use uuid::Uuid;
-use manager::helpers::{split_evenly, total_combinations};
-use common::rabbit;
 
 const REQUEST_IN_PROGRESS: &str = "IN_PROGRESS";
 const REQUEST_READY: &str = "READY";

@@ -4,29 +4,27 @@ use std::{
 };
 
 use anyhow::{Context, anyhow};
+use common::rabbit;
 use common::{
     constants::{
         ALPHABET_ENV, DEFAULT_PROGRESS_REPORT_INTERVAL_MS, DEFAULT_RABBITMQ_ADDR,
-        DEFAULT_WORKER_MAX_CONCURRENCY, DLQ_QUEUE, DLX_EXCHANGE, PROGRESS_REPORT_INTERVAL_MS_ENV,
-        RABBITMQ_ADDR_ENV, REQUEUE_DELIVERY_LIMIT, RESULTS_DLQ_ROUTING_KEY, RESULTS_EXCHANGE,
-        RESULTS_QUEUE, RESULTS_ROUTING_KEY, TASKS_DLQ_ROUTING_KEY, TASKS_EXCHANGE, TASKS_QUEUE,
-        TASKS_ROUTING_KEY, WORKER_MAX_CONCURRENCY_ENV,
+        DEFAULT_WORKER_MAX_CONCURRENCY, PROGRESS_REPORT_INTERVAL_MS_ENV, RABBITMQ_ADDR_ENV,
+        RESULTS_EXCHANGE, RESULTS_ROUTING_KEY, TASKS_QUEUE, WORKER_MAX_CONCURRENCY_ENV,
     },
     types::{CrackTaskMessage, WorkerTaskUpdateMessage},
 };
 use futures_util::StreamExt;
 use lapin::{
-    BasicProperties, Channel, Connection, ConnectionProperties, ExchangeKind,
+    BasicProperties, Channel, Connection, ConnectionProperties,
     message::Delivery,
     options::{
         BasicAckOptions, BasicConsumeOptions, BasicNackOptions, BasicPublishOptions,
-        BasicQosOptions, ExchangeDeclareOptions, QueueBindOptions, QueueDeclareOptions,
+        BasicQosOptions,
     },
-    types::{AMQPValue, FieldTable},
+    types::FieldTable,
 };
 use tokio::task::JoinSet;
 use worker::permutations::permutations;
-use common::rabbit;
 
 const TASKS_CONSUMER_TAG: &str = "hash-worker-task-consumer";
 const RETRY_DELAY_SECS: u64 = 3;

@@ -1,6 +1,14 @@
-use lapin::{Channel, ExchangeKind, options::{ExchangeDeclareOptions, QueueBindOptions, QueueDeclareOptions}, types::{AMQPValue, FieldTable}};
+use lapin::{
+    Channel, ExchangeKind,
+    options::{ExchangeDeclareOptions, QueueBindOptions, QueueDeclareOptions},
+    types::{AMQPValue, FieldTable},
+};
 
-use crate::constants::{DLQ_QUEUE, DLX_EXCHANGE, REQUEUE_DELIVERY_LIMIT, RESULTS_DLQ_ROUTING_KEY, RESULTS_EXCHANGE, RESULTS_QUEUE, RESULTS_ROUTING_KEY, TASKS_DLQ_ROUTING_KEY, TASKS_EXCHANGE, TASKS_QUEUE, TASKS_ROUTING_KEY};
+use crate::constants::{
+    DLQ_QUEUE, DLX_EXCHANGE, REQUEUE_DELIVERY_LIMIT, RESULTS_DLQ_ROUTING_KEY, RESULTS_EXCHANGE,
+    RESULTS_QUEUE, RESULTS_ROUTING_KEY, TASKS_DLQ_ROUTING_KEY, TASKS_EXCHANGE, TASKS_QUEUE,
+    TASKS_ROUTING_KEY,
+};
 
 pub async fn declare_topology(channel: &Channel) -> anyhow::Result<()> {
     channel

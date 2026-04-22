@@ -7,7 +7,8 @@ pub const RABBITMQ_ADDR_ENV: &str = "RABBITMQ_ADDR";
 pub const DEFAULT_RABBITMQ_ADDR: &str = "amqp://guest:guest@rabbitmq:5672/%2f";
 
 pub const MONGO_URI_ENV: &str = "MONGO_URI";
-pub const DEFAULT_MONGO_URI: &str = "mongodb://mongo1:27017,mongo2:27017,mongo3:27017/?replicaSet=rs0";
+pub const DEFAULT_MONGO_URI: &str =
+    "mongodb://mongo1:27017,mongo2:27017,mongo3:27017/?replicaSet=rs0";
 pub const MONGO_DB_ENV: &str = "MONGO_DB";
 pub const DEFAULT_MONGO_DB: &str = "crack_hash";
 
