@@ -287,6 +287,8 @@ async fn crack_task(
             publish_worker_update(channel, &update).await?;
             last_progress_report = Instant::now();
         }
+
+        tokio::task::coop::consume_budget().await;
     }
 
     Ok(matches)
