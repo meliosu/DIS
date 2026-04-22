@@ -4,27 +4,47 @@ services:
       context: .
       dockerfile: ./manager/Dockerfile
     init: true
+    restart: always
     ports:
       - ${MANAGER_PORT}:80
     environment:
       - RUST_LOG=${LOG_LEVEL}
       - ALPHABET=${ALPHABET}
+      - NUM_WORKERS=${NUM_WORKERS}
+      - RABBITMQ_ADDR=${RABBITMQ_ADDR}
+      - MONGO_URI=${MONGO_URI}
+      - MONGO_DB=${MONGO_DB}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      mongo-init:
+        condition: service_completed_successfully
 
   worker:
     build:
       context: .
       dockerfile: ./worker/Dockerfile
     init: true
+    restart: always
     deploy:
       replicas: ${NUM_WORKERS}
     environment:
       - RUST_LOG=${LOG_LEVEL}
       - ALPHABET=${ALPHABET}
+      - RABBITMQ_ADDR=${RABBITMQ_ADDR}
+      - PROGRESS_REPORT_INTERVAL_MS=${PROGRESS_REPORT_INTERVAL_MS}
+      - WORKER_MAX_CONCURRENCY=${WORKER_MAX_CONCURRENCY}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      manager:
+        condition: service_started
 
   mongo1:
     image: mongo:7
     command: >
       mongod --replSet rs0 --bind_ip_all
+    restart: unless-stopped
     volumes:
       - mongo1_data:/data/db
     healthcheck:
@@ -39,6 +59,7 @@ services:
     image: mongo:7
     command: >
       mongod --replSet rs0 --bind_ip_all
+    restart: unless-stopped
     volumes:
       - mongo2_data:/data/db
     healthcheck:
@@ -53,6 +74,7 @@ services:
     image: mongo:7
     command: >
       mongod --replSet rs0 --bind_ip_all
+    restart: unless-stopped
     volumes:
       - mongo3_data:/data/db
     healthcheck:
@@ -80,6 +102,7 @@ services:
 
   rabbitmq:
     image: rabbitmq:4
+    restart: unless-stopped
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
