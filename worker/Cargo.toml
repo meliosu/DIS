@@ -13,3 +13,5 @@ serde = { version = "1.0.228", features = ["derive"] }
 tokio = { version = "1.52.1", features = ["full"] }
 uuid = { version = "1.23.1", features = ["v4", "serde"] }
 common = { path = "../common/" }
+md5 = "0.8.0"
+hex = { version = "0.4.3", features = ["serde"] }
