@@ -6,6 +6,9 @@ services:
     init: true
     ports:
       - ${MANAGER_PORT}:80
+    environment:
+      - RUST_LOG=${LOG_LEVEL}
+      - ALPHABET=${ALPHABET}
 
   worker:
     build:
@@ -14,10 +17,14 @@ services:
     init: true
     deploy:
       replicas: ${NUM_WORKERS}
+    environment:
+      - RUST_LOG=${LOG_LEVEL}
+      - ALPHABET=${ALPHABET}
 
   mongo1:
     image: mongo:7
-    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    command: >
+      mongod --replSet rs0 --bind_ip_all
     volumes:
       - mongo1_data:/data/db
     healthcheck:
@@ -30,7 +37,8 @@ services:
 
   mongo2:
     image: mongo:7
-    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    command: >
+      mongod --replSet rs0 --bind_ip_all
     volumes:
       - mongo2_data:/data/db
     healthcheck:
@@ -43,7 +51,8 @@ services:
 
   mongo3:
     image: mongo:7
-    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    command: >
+      mongod --replSet rs0 --bind_ip_all
     volumes:
       - mongo3_data:/data/db
     healthcheck:
@@ -73,6 +82,14 @@ services:
     image: rabbitmq:4
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: >
+        rabbitmq-diagnostics -q ping
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
 
 volumes:
   mongo1_data:
