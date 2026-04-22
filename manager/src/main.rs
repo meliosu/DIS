@@ -40,6 +40,7 @@ use serde::{Deserialize, Serialize};
 use tokio::{net::TcpListener, time::sleep};
 use uuid::Uuid;
 use manager::helpers::{split_evenly, total_combinations};
+use common::rabbit;
 
 const REQUEST_IN_PROGRESS: &str = "IN_PROGRESS";
 const REQUEST_READY: &str = "READY";
@@ -381,7 +382,7 @@ async fn publish_pending_tasks(state: &AppState, request_id: Option<Uuid>) -> an
     }
 
     let (_connection, channel) = connect_rabbit_channel(&state.rabbit_addr).await?;
-    declare_rabbit_topology(&channel).await?;
+    rabbit::declare_topology(&channel).await?;
 
     for task in pending_tasks {
         let message = task_document_to_message(&task)?;
@@ -426,7 +427,7 @@ async fn available_worker_count(rabbit_addr: &str, fallback_workers: usize) -> u
         return fallback;
     };
 
-    if let Err(error) = declare_rabbit_topology(&channel).await {
+    if let Err(error) = rabbit::declare_topology(&channel).await {
         log::warn!(
             "Unable to ensure RabbitMQ topology while reading worker count: {error:#}. Using fallback {fallback}"
         );
@@ -459,7 +460,7 @@ async fn available_worker_count(rabbit_addr: &str, fallback_workers: usize) -> u
 
 async fn consume_results_once(state: &AppState) -> anyhow::Result<()> {
     let (_connection, channel) = connect_rabbit_channel(&state.rabbit_addr).await?;
-    declare_rabbit_topology(&channel).await?;
+    rabbit::declare_topology(&channel).await?;
     let mut consumer = channel
         .basic_consume(
             RESULTS_QUEUE.into(),
@@ -493,7 +494,7 @@ async fn consume_results_once(state: &AppState) -> anyhow::Result<()> {
 
 async fn consume_dlq_once(state: &AppState) -> anyhow::Result<()> {
     let (_connection, channel) = connect_rabbit_channel(&state.rabbit_addr).await?;
-    declare_rabbit_topology(&channel).await?;
+    rabbit::declare_topology(&channel).await?;
     let mut consumer = channel
         .basic_consume(
             DLQ_QUEUE.into(),
@@ -778,7 +779,7 @@ fn task_document_to_message(task: &TaskDocument) -> anyhow::Result<CrackTaskMess
 
 async fn ensure_rabbit_topology(rabbit_addr: &str) -> anyhow::Result<()> {
     let (_connection, channel) = connect_rabbit_channel(rabbit_addr).await?;
-    declare_rabbit_topology(&channel).await
+    rabbit::declare_topology(&channel).await
 }
 
 async fn connect_rabbit_channel(rabbit_addr: &str) -> anyhow::Result<(Connection, Channel)> {
@@ -787,134 +788,6 @@ async fn connect_rabbit_channel(rabbit_addr: &str) -> anyhow::Result<(Connection
         .with_context(|| format!("failed to connect RabbitMQ at {rabbit_addr}"))?;
     let channel = connection.create_channel().await?;
     Ok((connection, channel))
-}
-
-async fn declare_rabbit_topology(channel: &Channel) -> anyhow::Result<()> {
-    channel
-        .exchange_declare(
-            TASKS_EXCHANGE.into(),
-            ExchangeKind::Direct,
-            ExchangeDeclareOptions {
-                durable: true,
-                ..Default::default()
-            },
-            FieldTable::default(),
-        )
-        .await?;
-    channel
-        .exchange_declare(
-            RESULTS_EXCHANGE.into(),
-            ExchangeKind::Direct,
-            ExchangeDeclareOptions {
-                durable: true,
-                ..Default::default()
-            },
-            FieldTable::default(),
-        )
-        .await?;
-    channel
-        .exchange_declare(
-            DLX_EXCHANGE.into(),
-            ExchangeKind::Direct,
-            ExchangeDeclareOptions {
-                durable: true,
-                ..Default::default()
-            },
-            FieldTable::default(),
-        )
-        .await?;
-
-    channel
-        .queue_declare(
-            TASKS_QUEUE.into(),
-            QueueDeclareOptions {
-                durable: true,
-                ..Default::default()
-            },
-            queue_args(TASKS_DLQ_ROUTING_KEY),
-        )
-        .await?;
-    channel
-        .queue_bind(
-            TASKS_QUEUE.into(),
-            TASKS_EXCHANGE.into(),
-            TASKS_ROUTING_KEY.into(),
-            QueueBindOptions::default(),
-            FieldTable::default(),
-        )
-        .await?;
-
-    channel
-        .queue_declare(
-            RESULTS_QUEUE.into(),
-            QueueDeclareOptions {
-                durable: true,
-                ..Default::default()
-            },
-            queue_args(RESULTS_DLQ_ROUTING_KEY),
-        )
-        .await?;
-    channel
-        .queue_bind(
-            RESULTS_QUEUE.into(),
-            RESULTS_EXCHANGE.into(),
-            RESULTS_ROUTING_KEY.into(),
-            QueueBindOptions::default(),
-            FieldTable::default(),
-        )
-        .await?;
-
-    channel
-        .queue_declare(
-            DLQ_QUEUE.into(),
-            QueueDeclareOptions {
-                durable: true,
-                ..Default::default()
-            },
-            FieldTable::default(),
-        )
-        .await?;
-    channel
-        .queue_bind(
-            DLQ_QUEUE.into(),
-            DLX_EXCHANGE.into(),
-            TASKS_DLQ_ROUTING_KEY.into(),
-            QueueBindOptions::default(),
-            FieldTable::default(),
-        )
-        .await?;
-    channel
-        .queue_bind(
-            DLQ_QUEUE.into(),
-            DLX_EXCHANGE.into(),
-            RESULTS_DLQ_ROUTING_KEY.into(),
-            QueueBindOptions::default(),
-            FieldTable::default(),
-        )
-        .await?;
-
-    Ok(())
-}
-
-fn queue_args(dlq_routing_key: &str) -> FieldTable {
-    let mut args = FieldTable::default();
-    args.insert(
-        "x-queue-type".into(),
-        AMQPValue::LongString("quorum".into()),
-    );
-    args.insert(
-        "x-delivery-limit".into(),
-        AMQPValue::LongInt(REQUEUE_DELIVERY_LIMIT),
-    );
-    args.insert(
-        "x-dead-letter-exchange".into(),
-        AMQPValue::LongString(DLX_EXCHANGE.into()),
-    );
-    args.insert(
-        "x-dead-letter-routing-key".into(),
-        AMQPValue::LongString(dlq_routing_key.into()),
-    );
-    args
 }
 
 fn normalize_progress_counters(processed: u64, total: u64) -> anyhow::Result<(u64, u64)> {
