@@ -6,7 +6,7 @@ use std::{
 use anyhow::{Context, anyhow};
 use futures_util::StreamExt;
 use lapin::{
-    BasicProperties, Channel, Connection, ConnectionProperties,
+    BasicProperties, Channel,
     message::Delivery,
     options::{
         BasicAckOptions, BasicConsumeOptions, BasicNackOptions, BasicPublishOptions,
@@ -88,7 +88,7 @@ async fn consume_tasks_once(
     progress_interval: Duration,
     worker_max_concurrency: usize,
 ) -> anyhow::Result<()> {
-    let (_connection, channel) = connect_rabbit_channel(rabbit_addr).await?;
+    let (_connection, channel) = rabbit::connect_channel(rabbit_addr).await?;
     rabbit::declare_topology(&channel).await?;
     let qos = worker_max_concurrency.min(u16::MAX as usize) as u16;
     channel.basic_qos(qos, BasicQosOptions::default()).await?;
@@ -308,13 +308,4 @@ async fn publish_worker_update(
         .context("failed to confirm worker update publish")?;
 
     Ok(())
-}
-
-async fn connect_rabbit_channel(rabbit_addr: &str) -> anyhow::Result<(Connection, Channel)> {
-    let connection = Connection::connect(rabbit_addr, ConnectionProperties::default())
-        .await
-        .with_context(|| format!("failed to connect RabbitMQ at {rabbit_addr}"))?;
-
-    let channel = connection.create_channel().await?;
-    Ok((connection, channel))
 }

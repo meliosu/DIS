@@ -49,7 +49,7 @@ pub struct CrackTaskMessage {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "SCREAMING_SNAKE_CASE")]
+#[serde(tag = "kind", rename_all = "camelCase")]
 pub enum WorkerTaskUpdateMessage {
     Progress {
         request_id: Uuid,

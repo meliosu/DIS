@@ -8,7 +8,7 @@ use axum::{
 };
 use futures_util::{StreamExt, TryStreamExt};
 use lapin::{
-    BasicProperties, Channel, Connection, ConnectionProperties,
+    BasicProperties,
     options::{
         BasicAckOptions, BasicConsumeOptions, BasicNackOptions, BasicPublishOptions,
         QueueDeclareOptions,
@@ -64,7 +64,7 @@ async fn run() -> anyhow::Result<()> {
         .await
         .with_context(|| format!("failed to parse MongoDB URI: {mongo_uri}"))?;
 
-    mongo_options.app_name = Some("hash-cracker-manager".to_string());
+    mongo_options.app_name = Some(MONGODB_APP_NAME.to_string());
     let client = Client::with_options(mongo_options)?;
     let db = client.database(&mongo_db);
 
@@ -136,7 +136,7 @@ async fn crack_hash(
         id: request_id.to_string(),
         hash: payload.hash.clone(),
         max_length,
-        status: REQUEST_IN_PROGRESS.to_string(),
+        status: RequestStatus::InProgress,
         progress: 0,
         data: Vec::new(),
         total_tasks: ranges.len() as i32,
@@ -207,17 +207,14 @@ async fn get_status(
         .map_err(|error| ApiError::internal(format!("failed to read status: {error}")))?
         .ok_or_else(|| ApiError::not_found("request not found"))?;
 
-    let status = parse_request_status(&request.status)
-        .ok_or_else(|| ApiError::internal("stored request has invalid status"))?;
-
-    let data = if matches!(status, RequestStatus::Ready) {
+    let data = if matches!(request.status, RequestStatus::Ready) {
         Some(request.data)
     } else {
         None
     };
 
     Ok(Json(CrackStatusResponse {
-        status,
+        status: request.status,
         progress: request.progress.clamp(0, 100) as u8,
         data,
     }))
@@ -277,7 +274,7 @@ async fn publish_pending_tasks(state: &AppState, request_id: Option<Uuid>) -> an
         return Ok(());
     }
 
-    let (_connection, channel) = connect_rabbit_channel(&state.rabbit_addr).await?;
+    let (_connection, channel) = rabbit::connect_channel(&state.rabbit_addr).await?;
     rabbit::declare_topology(&channel).await?;
 
     for task in pending_tasks {
@@ -320,7 +317,7 @@ async fn publish_pending_tasks(state: &AppState, request_id: Option<Uuid>) -> an
 async fn available_worker_count(rabbit_addr: &str, fallback_workers: usize) -> usize {
     let fallback = fallback_workers.max(1);
 
-    let Ok((_connection, channel)) = connect_rabbit_channel(rabbit_addr).await else {
+    let Ok((_connection, channel)) = rabbit::connect_channel(rabbit_addr).await else {
         log::warn!("Unable to read live worker count from RabbitMQ, using fallback {fallback}");
         return fallback;
     };
@@ -359,7 +356,7 @@ async fn available_worker_count(rabbit_addr: &str, fallback_workers: usize) -> u
 }
 
 async fn consume_results_once(state: &AppState) -> anyhow::Result<()> {
-    let (_connection, channel) = connect_rabbit_channel(&state.rabbit_addr).await?;
+    let (_connection, channel) = rabbit::connect_channel(&state.rabbit_addr).await?;
     rabbit::declare_topology(&channel).await?;
 
     let mut consumer = channel
@@ -395,7 +392,7 @@ async fn consume_results_once(state: &AppState) -> anyhow::Result<()> {
 }
 
 async fn consume_dlq_once(state: &AppState) -> anyhow::Result<()> {
-    let (_connection, channel) = connect_rabbit_channel(&state.rabbit_addr).await?;
+    let (_connection, channel) = rabbit::connect_channel(&state.rabbit_addr).await?;
     rabbit::declare_topology(&channel).await?;
 
     let mut consumer = channel
@@ -642,21 +639,18 @@ async fn refresh_request_state(
     };
 
     let status = if has_error {
-        REQUEST_ERROR
+        RequestStatus::Error
     } else if completed == total_tasks {
-        REQUEST_READY
+        RequestStatus::Ready
     } else {
-        REQUEST_IN_PROGRESS
+        RequestStatus::InProgress
     };
 
-    let output = if status == REQUEST_READY {
-        data.into_iter().collect::<Vec<_>>()
-    } else {
-        Vec::new()
-    };
+    let output = data.into_iter().collect::<Vec<_>>();
+    let status_bson = mongodb::bson::to_bson(&status)?;
 
     let mut set_doc = doc! {
-        "status": status,
+        "status": status_bson,
         "progress": progress,
         "completed_tasks": completed,
         "data": output,
@@ -665,7 +659,7 @@ async fn refresh_request_state(
 
     if let Some(error) = last_error {
         set_doc.insert("last_error", error);
-    } else if status != REQUEST_ERROR {
+    } else if status != RequestStatus::Error {
         set_doc.insert("last_error", Bson::Null);
     }
 
@@ -695,17 +689,8 @@ fn task_document_to_message(task: &TaskDocument) -> anyhow::Result<CrackTaskMess
 }
 
 async fn ensure_rabbit_topology(rabbit_addr: &str) -> anyhow::Result<()> {
-    let (_connection, channel) = connect_rabbit_channel(rabbit_addr).await?;
+    let (_connection, channel) = rabbit::connect_channel(rabbit_addr).await?;
     rabbit::declare_topology(&channel).await
-}
-
-async fn connect_rabbit_channel(rabbit_addr: &str) -> anyhow::Result<(Connection, Channel)> {
-    let connection = Connection::connect(rabbit_addr, ConnectionProperties::default())
-        .await
-        .with_context(|| format!("failed to connect RabbitMQ at {rabbit_addr}"))?;
-
-    let channel = connection.create_channel().await?;
-    Ok((connection, channel))
 }
 
 fn normalize_progress_counters(processed: u64, total: u64) -> anyhow::Result<(u64, u64)> {
@@ -714,15 +699,6 @@ fn normalize_progress_counters(processed: u64, total: u64) -> anyhow::Result<(u6
     }
 
     Ok((processed.min(total), total))
-}
-
-fn parse_request_status(status: &str) -> Option<RequestStatus> {
-    match status {
-        REQUEST_IN_PROGRESS => Some(RequestStatus::InProgress),
-        REQUEST_READY => Some(RequestStatus::Ready),
-        REQUEST_ERROR => Some(RequestStatus::Error),
-        _ => None,
-    }
 }
 
 fn is_valid_md5(hash: &str) -> bool {

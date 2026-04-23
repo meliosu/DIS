@@ -2,6 +2,8 @@ use mongodb::Collection;
 use mongodb::bson::DateTime;
 use serde::{Deserialize, Serialize};
 
+use common::types::RequestStatus;
+
 #[derive(Clone)]
 pub struct AppState {
     pub requests: Collection<RequestDocument>,
@@ -17,7 +19,7 @@ pub struct RequestDocument {
     pub id: String,
     pub hash: String,
     pub max_length: i32,
-    pub status: String,
+    pub status: RequestStatus,
     pub progress: i32,
     pub data: Vec<String>,
     pub total_tasks: i32,
