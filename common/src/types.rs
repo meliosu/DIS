@@ -10,25 +10,26 @@ pub enum RequestStatus {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CrackHashRequest {
     pub hash: String,
-    #[serde(rename = "maxLength")]
     pub max_length: usize,
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CrackHashResponse {
-    #[serde(rename = "requestId")]
     pub request_id: Uuid,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CrackStatusRequest {
-    #[serde(rename = "requestId")]
     pub request_id: Uuid,
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CrackStatusResponse {
     pub status: RequestStatus,
     pub progress: u8,
@@ -36,11 +37,11 @@ pub struct CrackStatusResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CrackTaskMessage {
     pub request_id: Uuid,
     pub task_id: Uuid,
     pub hash: String,
-    #[serde(rename = "maxLength")]
     pub max_length: usize,
     pub alphabet: String,
     pub start_index: u64,

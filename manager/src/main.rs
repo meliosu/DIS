@@ -4,24 +4,11 @@ use anyhow::{Context, anyhow};
 use axum::{
     Json, Router,
     extract::{Query, State},
-    http::StatusCode,
-    response::{IntoResponse, Response},
     routing::{get, post},
 };
+use common::constants::*;
 use common::rabbit;
-use common::{
-    constants::{
-        ALPHABET_ENV, DEFAULT_MANAGER_BIND_ADDR, DEFAULT_MONGO_DB, DEFAULT_MONGO_URI,
-        DEFAULT_RABBITMQ_ADDR, DEFAULT_WORKERS, DLQ_QUEUE, MANAGER_BIND_ADDR_ENV, MONGO_DB_ENV,
-        MONGO_URI_ENV, NUM_WORKERS_ENV, RABBITMQ_ADDR_ENV, REPUBLISH_INTERVAL_SECS,
-        REQUESTS_COLLECTION, RESULTS_QUEUE, TASKS_COLLECTION, TASKS_EXCHANGE, TASKS_QUEUE,
-        TASKS_ROUTING_KEY,
-    },
-    types::{
-        CrackHashRequest, CrackHashResponse, CrackStatusRequest, CrackStatusResponse,
-        CrackTaskMessage, RequestStatus, WorkerTaskUpdateMessage,
-    },
-};
+use common::types::*;
 use futures_util::{StreamExt, TryStreamExt};
 use lapin::{
     BasicProperties, Channel, Connection, ConnectionProperties,
@@ -33,116 +20,15 @@ use lapin::{
 };
 use manager::helpers::{split_evenly, total_combinations};
 use mongodb::{
-    Client, Collection,
+    Client,
     bson::{Bson, DateTime, doc},
     options::ClientOptions,
 };
-use serde::{Deserialize, Serialize};
 use tokio::{net::TcpListener, time::sleep};
 use uuid::Uuid;
 
-const REQUEST_IN_PROGRESS: &str = "IN_PROGRESS";
-const REQUEST_READY: &str = "READY";
-const REQUEST_ERROR: &str = "ERROR";
-
-const TASK_PENDING_PUBLISH: &str = "PENDING_PUBLISH";
-const TASK_QUEUED: &str = "QUEUED";
-const TASK_DONE: &str = "DONE";
-const TASK_ERROR: &str = "ERROR";
-const TASK_DLQ: &str = "DLQ";
-
-const RESULTS_CONSUMER_TAG: &str = "manager-results-consumer";
-const DLQ_CONSUMER_TAG: &str = "manager-dlq-consumer";
-const RETRY_DELAY_SECS: u64 = 3;
-
-#[derive(Clone)]
-struct AppState {
-    requests: Collection<RequestDocument>,
-    tasks: Collection<TaskDocument>,
-    rabbit_addr: String,
-    alphabet: String,
-    fallback_workers: usize,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct RequestDocument {
-    #[serde(rename = "_id")]
-    id: String,
-    hash: String,
-    max_length: i32,
-    status: String,
-    progress: i32,
-    data: Vec<String>,
-    total_tasks: i32,
-    completed_tasks: i32,
-    last_error: Option<String>,
-    created_at: DateTime,
-    updated_at: DateTime,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct TaskDocument {
-    #[serde(rename = "_id")]
-    id: String,
-    request_id: String,
-    hash: String,
-    max_length: i32,
-    alphabet: String,
-    start_index: i64,
-    end_index: i64,
-    #[serde(default)]
-    total_candidates: i64,
-    #[serde(default)]
-    processed_candidates: i64,
-    status: String,
-    matches: Vec<String>,
-    last_error: Option<String>,
-    created_at: DateTime,
-    updated_at: DateTime,
-}
-
-#[derive(Debug, Serialize)]
-struct ErrorResponse {
-    error: String,
-}
-
-#[derive(Debug)]
-struct ApiError {
-    status: StatusCode,
-    message: String,
-}
-
-impl ApiError {
-    fn bad_request(message: impl Into<String>) -> Self {
-        Self {
-            status: StatusCode::BAD_REQUEST,
-            message: message.into(),
-        }
-    }
-
-    fn not_found(message: impl Into<String>) -> Self {
-        Self {
-            status: StatusCode::NOT_FOUND,
-            message: message.into(),
-        }
-    }
-
-    fn internal(message: impl Into<String>) -> Self {
-        Self {
-            status: StatusCode::INTERNAL_SERVER_ERROR,
-            message: message.into(),
-        }
-    }
-}
-
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
-        let body = Json(ErrorResponse {
-            error: self.message,
-        });
-        (self.status, body).into_response()
-    }
-}
+use manager::constants::*;
+use manager::types::*;
 
 #[tokio::main]
 async fn main() {

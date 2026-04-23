@@ -4,15 +4,9 @@ use std::{
 };
 
 use anyhow::{Context, anyhow};
+use common::constants::*;
 use common::rabbit;
-use common::{
-    constants::{
-        ALPHABET_ENV, DEFAULT_PROGRESS_REPORT_INTERVAL_MS, DEFAULT_RABBITMQ_ADDR,
-        DEFAULT_WORKER_MAX_CONCURRENCY, PROGRESS_REPORT_INTERVAL_MS_ENV, RABBITMQ_ADDR_ENV,
-        RESULTS_EXCHANGE, RESULTS_ROUTING_KEY, TASKS_QUEUE, WORKER_MAX_CONCURRENCY_ENV,
-    },
-    types::{CrackTaskMessage, WorkerTaskUpdateMessage},
-};
+use common::types::*;
 use futures_util::StreamExt;
 use lapin::{
     BasicProperties, Channel, Connection, ConnectionProperties,
@@ -26,8 +20,7 @@ use lapin::{
 use tokio::task::JoinSet;
 use worker::permutations::permutations;
 
-const TASKS_CONSUMER_TAG: &str = "hash-worker-task-consumer";
-const RETRY_DELAY_SECS: u64 = 3;
+use worker::constants::*;
 
 #[tokio::main]
 async fn main() {
