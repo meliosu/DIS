@@ -6,9 +6,6 @@ use axum::{
     extract::{Query, State},
     routing::{get, post},
 };
-use common::constants::*;
-use common::rabbit;
-use common::types::*;
 use futures_util::{StreamExt, TryStreamExt};
 use lapin::{
     BasicProperties, Channel, Connection, ConnectionProperties,
@@ -18,7 +15,6 @@ use lapin::{
     },
     types::FieldTable,
 };
-use manager::helpers::{split_evenly, total_combinations};
 use mongodb::{
     Client,
     bson::{Bson, DateTime, doc},
@@ -27,7 +23,12 @@ use mongodb::{
 use tokio::{net::TcpListener, time::sleep};
 use uuid::Uuid;
 
+use common::constants::*;
+use common::rabbit;
+use common::types::*;
+
 use manager::constants::*;
+use manager::helpers::{split_evenly, total_combinations};
 use manager::types::*;
 
 #[tokio::main]
@@ -35,15 +36,17 @@ async fn main() {
     env_logger::init();
 
     if let Err(e) = run().await {
-        log::error!("{e:?}");
+        log::error!("{e:#}");
     }
 }
 
 async fn run() -> anyhow::Result<()> {
     let bind_addr =
         env::var(MANAGER_BIND_ADDR_ENV).unwrap_or_else(|_| DEFAULT_MANAGER_BIND_ADDR.to_string());
+
     let rabbit_addr =
         env::var(RABBITMQ_ADDR_ENV).unwrap_or_else(|_| DEFAULT_RABBITMQ_ADDR.to_string());
+
     let mongo_uri = env::var(MONGO_URI_ENV).unwrap_or_else(|_| DEFAULT_MONGO_URI.to_string());
     let mongo_db = env::var(MONGO_DB_ENV).unwrap_or_else(|_| DEFAULT_MONGO_DB.to_string());
     let alphabet = env::var(ALPHABET_ENV).context("ALPHABET is not set")?;
@@ -60,6 +63,7 @@ async fn run() -> anyhow::Result<()> {
     let mut mongo_options = ClientOptions::parse(&mongo_uri)
         .await
         .with_context(|| format!("failed to parse MongoDB URI: {mongo_uri}"))?;
+
     mongo_options.app_name = Some("hash-cracker-manager".to_string());
     let client = Client::with_options(mongo_options)?;
     let db = client.database(&mongo_db);
@@ -92,6 +96,7 @@ async fn run() -> anyhow::Result<()> {
     let listener = TcpListener::bind(&bind_addr)
         .await
         .with_context(|| format!("failed to bind manager on {bind_addr}"))?;
+
     log::info!("Manager listening on {bind_addr}");
     axum::serve(listener, app)
         .await
@@ -116,8 +121,10 @@ async fn crack_hash(
     let worker_count = available_worker_count(&state.rabbit_addr, state.fallback_workers).await;
     let max_length = i32::try_from(payload.max_length)
         .map_err(|_| ApiError::bad_request("maxLength is too large"))?;
+
     let total = total_combinations(state.alphabet.chars().count(), payload.max_length)
         .ok_or_else(|| ApiError::bad_request("search space is too large"))?;
+
     let ranges = split_evenly(total, worker_count);
 
     if ranges.is_empty() {
@@ -151,6 +158,7 @@ async fn crack_hash(
         let total_candidates = end_index
             .checked_sub(start_index)
             .ok_or_else(|| ApiError::internal("invalid task split boundaries"))?;
+
         task_docs.push(TaskDocument {
             id: task_id.to_string(),
             request_id: request_id.to_string(),
@@ -201,6 +209,7 @@ async fn get_status(
 
     let status = parse_request_status(&request.status)
         .ok_or_else(|| ApiError::internal("stored request has invalid status"))?;
+
     let data = if matches!(status, RequestStatus::Ready) {
         Some(request.data)
     } else {
@@ -233,6 +242,7 @@ fn spawn_results_consumer(state: AppState) {
                 Ok(()) => log::warn!("Results consumer completed unexpectedly, reconnecting"),
                 Err(error) => log::error!("Results consumer failed: {error:#}"),
             }
+
             sleep(Duration::from_secs(RETRY_DELAY_SECS)).await;
         }
     });
@@ -245,6 +255,7 @@ fn spawn_dlq_consumer(state: AppState) {
                 Ok(()) => log::warn!("DLQ consumer completed unexpectedly, reconnecting"),
                 Err(error) => log::error!("DLQ consumer failed: {error:#}"),
             }
+
             sleep(Duration::from_secs(RETRY_DELAY_SECS)).await;
         }
     });
@@ -281,6 +292,7 @@ async fn publish_pending_tasks(state: &AppState, request_id: Option<Uuid>) -> an
                 BasicProperties::default().with_delivery_mode(2),
             )
             .await?;
+
         confirmation
             .await
             .with_context(|| format!("publisher confirm failed for task {}", task.id))?;
@@ -298,6 +310,7 @@ async fn publish_pending_tasks(state: &AppState, request_id: Option<Uuid>) -> an
                 },
             )
             .await?;
+
         log::info!("Queued task {} for request {}", task.id, task.request_id);
     }
 
@@ -316,6 +329,7 @@ async fn available_worker_count(rabbit_addr: &str, fallback_workers: usize) -> u
         log::warn!(
             "Unable to ensure RabbitMQ topology while reading worker count: {error:#}. Using fallback {fallback}"
         );
+
         return fallback;
     }
 
@@ -338,6 +352,7 @@ async fn available_worker_count(rabbit_addr: &str, fallback_workers: usize) -> u
             log::warn!(
                 "Unable to query queue consumer count from RabbitMQ: {error}. Using fallback {fallback}"
             );
+
             fallback
         }
     }
@@ -346,6 +361,7 @@ async fn available_worker_count(rabbit_addr: &str, fallback_workers: usize) -> u
 async fn consume_results_once(state: &AppState) -> anyhow::Result<()> {
     let (_connection, channel) = connect_rabbit_channel(&state.rabbit_addr).await?;
     rabbit::declare_topology(&channel).await?;
+
     let mut consumer = channel
         .basic_consume(
             RESULTS_QUEUE.into(),
@@ -354,6 +370,7 @@ async fn consume_results_once(state: &AppState) -> anyhow::Result<()> {
             FieldTable::default(),
         )
         .await?;
+
     log::info!("Connected results consumer");
 
     while let Some(delivery_result) = consumer.next().await {
@@ -380,6 +397,7 @@ async fn consume_results_once(state: &AppState) -> anyhow::Result<()> {
 async fn consume_dlq_once(state: &AppState) -> anyhow::Result<()> {
     let (_connection, channel) = connect_rabbit_channel(&state.rabbit_addr).await?;
     rabbit::declare_topology(&channel).await?;
+
     let mut consumer = channel
         .basic_consume(
             DLQ_QUEUE.into(),
@@ -388,6 +406,7 @@ async fn consume_dlq_once(state: &AppState) -> anyhow::Result<()> {
             FieldTable::default(),
         )
         .await?;
+
     log::info!("Connected DLQ consumer");
 
     while let Some(delivery_result) = consumer.next().await {
@@ -395,6 +414,7 @@ async fn consume_dlq_once(state: &AppState) -> anyhow::Result<()> {
         if let Err(error) = handle_dlq_message(state, &delivery.data).await {
             log::error!("Failed to process DLQ message: {error:#}");
         }
+
         delivery.ack(BasicAckOptions::default()).await?;
     }
 
@@ -451,6 +471,7 @@ async fn handle_worker_update_message(state: &AppState, payload: &[u8]) -> anyho
             } else {
                 TASK_DONE
             };
+
             let mut set_doc = doc! {
                 "status": status,
                 "matches": matches,
@@ -458,6 +479,7 @@ async fn handle_worker_update_message(state: &AppState, payload: &[u8]) -> anyho
                 "processed_candidates": i64::try_from(processed)?,
                 "updated_at": DateTime::now(),
             };
+
             match error.as_ref() {
                 Some(error) => {
                     set_doc.insert("last_error", error.clone());
@@ -496,6 +518,7 @@ async fn handle_dlq_message(state: &AppState, payload: &[u8]) -> anyhow::Result<
 
     if let Ok(task_message) = serde_json::from_slice::<CrackTaskMessage>(payload) {
         let task_id = task_message.task_id.to_string();
+
         state
             .tasks
             .update_one(
@@ -509,12 +532,14 @@ async fn handle_dlq_message(state: &AppState, payload: &[u8]) -> anyhow::Result<
                 },
             )
             .await?;
+
         refresh_request_state(
             state,
             task_message.request_id,
             Some("Task moved to DLQ after 3 failed attempts"),
         )
         .await?;
+
         return Ok(());
     }
 
@@ -531,7 +556,9 @@ async fn handle_dlq_message(state: &AppState, payload: &[u8]) -> anyhow::Result<
                 ..
             } => (request_id, task_id),
         };
+
         let task_id = task_id.to_string();
+
         state
             .tasks
             .update_one(
@@ -545,12 +572,14 @@ async fn handle_dlq_message(state: &AppState, payload: &[u8]) -> anyhow::Result<
                 },
             )
             .await?;
+
         refresh_request_state(
             state,
             request_id,
             Some("Result moved to DLQ after 3 failed attempts"),
         )
         .await?;
+
         return Ok(());
     }
 
@@ -583,6 +612,7 @@ async fn refresh_request_state(
         } else {
             fallback_total
         };
+
         let mut task_processed = task.processed_candidates.clamp(0, task_total);
 
         match task.status.as_str() {
@@ -610,6 +640,7 @@ async fn refresh_request_state(
     } else {
         ((completed * 100) / total_tasks).clamp(0, 100)
     };
+
     let status = if has_error {
         REQUEST_ERROR
     } else if completed == total_tasks {
@@ -642,6 +673,7 @@ async fn refresh_request_state(
         .requests
         .update_one(doc! { "_id": request_key }, doc! { "$set": set_doc })
         .await?;
+
     Ok(())
 }
 
@@ -671,6 +703,7 @@ async fn connect_rabbit_channel(rabbit_addr: &str) -> anyhow::Result<(Connection
     let connection = Connection::connect(rabbit_addr, ConnectionProperties::default())
         .await
         .with_context(|| format!("failed to connect RabbitMQ at {rabbit_addr}"))?;
+
     let channel = connection.create_channel().await?;
     Ok((connection, channel))
 }

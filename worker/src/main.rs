@@ -4,9 +4,6 @@ use std::{
 };
 
 use anyhow::{Context, anyhow};
-use common::constants::*;
-use common::rabbit;
-use common::types::*;
 use futures_util::StreamExt;
 use lapin::{
     BasicProperties, Channel, Connection, ConnectionProperties,
@@ -18,9 +15,13 @@ use lapin::{
     types::FieldTable,
 };
 use tokio::task::JoinSet;
-use worker::permutations::permutations;
+
+use common::constants::*;
+use common::rabbit;
+use common::types::*;
 
 use worker::constants::*;
+use worker::permutations::permutations;
 
 #[tokio::main]
 async fn main() {
@@ -34,28 +35,34 @@ async fn main() {
 async fn run() -> anyhow::Result<()> {
     let rabbit_addr =
         env::var(RABBITMQ_ADDR_ENV).unwrap_or_else(|_| DEFAULT_RABBITMQ_ADDR.to_string());
+
     let configured_alphabet = env::var(ALPHABET_ENV).context("ALPHABET is not set")?;
     let worker_max_concurrency = env::var(WORKER_MAX_CONCURRENCY_ENV)
         .ok()
         .and_then(|value| value.parse::<usize>().ok())
         .unwrap_or(DEFAULT_WORKER_MAX_CONCURRENCY);
+
     let progress_interval_ms = env::var(PROGRESS_REPORT_INTERVAL_MS_ENV)
         .ok()
         .and_then(|value| value.parse::<u64>().ok())
         .unwrap_or(DEFAULT_PROGRESS_REPORT_INTERVAL_MS);
+
     if configured_alphabet.is_empty() {
         return Err(anyhow!("ALPHABET must not be empty"));
     }
+
     if progress_interval_ms == 0 {
         return Err(anyhow!(
             "{PROGRESS_REPORT_INTERVAL_MS_ENV} must be greater than 0"
         ));
     }
+
     if worker_max_concurrency == 0 {
         return Err(anyhow!(
             "{WORKER_MAX_CONCURRENCY_ENV} must be greater than 0"
         ));
     }
+
     let progress_interval = Duration::from_millis(progress_interval_ms);
 
     loop {
@@ -189,9 +196,11 @@ async fn handle_task_delivery(
         .end_index
         .checked_sub(message.start_index)
         .ok_or_else(|| anyhow!("invalid task range boundaries"))?;
+
     if total == 0 {
         return Err(anyhow!("task range is empty"));
     }
+
     let matches = crack_task(channel, &message, progress_interval).await?;
     let result = WorkerTaskUpdateMessage::Finished {
         request_id: message.request_id,
@@ -228,35 +237,25 @@ async fn crack_task(
         return Err(anyhow!("task alphabet is empty"));
     }
 
-    let start_index =
-        usize::try_from(task.start_index).context("task start index does not fit usize")?;
     let total = task
         .end_index
         .checked_sub(task.start_index)
         .ok_or_else(|| anyhow!("invalid task range boundaries"))?;
+
     if total == 0 {
         return Ok(Vec::new());
     }
 
     let target_hash = task.hash.to_ascii_lowercase();
     let mut matches = Vec::new();
-    let mut generator = permutations(&alphabet, task.max_length);
-    let mut first = generator.nth(start_index);
     let mut processed = 0_u64;
     let mut last_progress_report = Instant::now();
 
-    for idx in task.start_index..task.end_index {
-        let candidate_vec = if idx == task.start_index {
-            first
-                .take()
-                .ok_or_else(|| anyhow!("start index is out of permutation bounds"))?
-        } else {
-            generator
-                .next()
-                .ok_or_else(|| anyhow!("task range exceeded permutation bounds"))?
-        };
-
-        let candidate: String = candidate_vec.into_iter().collect();
+    for perm in permutations(&alphabet, task.max_length)
+        .skip(task.start_index as usize)
+        .take(task.end_index as usize - task.start_index as usize)
+    {
+        let candidate: String = perm.into_iter().collect();
         if candidate == "bom" {
             panic!(
                 "Critical stop-word 'bom' encountered while processing task {}",
@@ -270,6 +269,7 @@ async fn crack_task(
         }
 
         processed = processed.saturating_add(1);
+
         if processed < total && last_progress_report.elapsed() >= progress_interval {
             let update = WorkerTaskUpdateMessage::Progress {
                 request_id: task.request_id,
@@ -277,6 +277,7 @@ async fn crack_task(
                 processed,
                 total,
             };
+
             publish_worker_update(channel, &update).await?;
             last_progress_report = Instant::now();
         }
@@ -301,9 +302,11 @@ async fn publish_worker_update(
             BasicProperties::default().with_delivery_mode(2),
         )
         .await?;
+
     confirmation
         .await
         .context("failed to confirm worker update publish")?;
+
     Ok(())
 }
 
@@ -311,6 +314,7 @@ async fn connect_rabbit_channel(rabbit_addr: &str) -> anyhow::Result<(Connection
     let connection = Connection::connect(rabbit_addr, ConnectionProperties::default())
         .await
         .with_context(|| format!("failed to connect RabbitMQ at {rabbit_addr}"))?;
+
     let channel = connection.create_channel().await?;
     Ok((connection, channel))
 }
