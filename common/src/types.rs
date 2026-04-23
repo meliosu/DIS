@@ -49,20 +49,12 @@ pub struct CrackTaskMessage {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "camelCase")]
-pub enum WorkerTaskUpdateMessage {
-    Progress {
-        request_id: Uuid,
-        task_id: Uuid,
-        processed: u64,
-        total: u64,
-    },
-    Finished {
-        request_id: Uuid,
-        task_id: Uuid,
-        processed: u64,
-        total: u64,
-        matches: Vec<String>,
-        error: Option<String>,
-    },
+#[serde(rename_all = "camelCase")]
+pub struct WorkerTaskUpdateMessage {
+    pub request_id: Uuid,
+    pub task_id: Uuid,
+    pub processed: u64,
+    pub total: u64,
+    pub matches: Vec<String>,
+    pub error: Option<String>,
 }

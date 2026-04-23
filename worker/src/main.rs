@@ -202,7 +202,7 @@ async fn handle_task_delivery(
     }
 
     let matches = crack_task(channel, &message, progress_interval).await?;
-    let result = WorkerTaskUpdateMessage::Finished {
+    let result = WorkerTaskUpdateMessage {
         request_id: message.request_id,
         task_id: message.task_id,
         processed: total,
@@ -264,26 +264,35 @@ async fn crack_task(
         .take(task.end_index as usize - task.start_index as usize)
     {
         let candidate: String = perm.into_iter().collect();
-        if candidate == "bom" {
-            panic!(
-                "Critical stop-word 'bom' encountered while processing task {}",
-                task.task_id
-            );
-        }
 
         let digest = format!("{:x}", md5::compute(candidate.as_bytes()));
         if digest == target_hash {
+            if candidate == "bom" {
+                panic!(
+                    "Critical stop-word 'bom' encountered while processing task {}",
+                    task.task_id
+                );
+            }
+
+            log::info!(
+                "Request {}: found word {} in task {}",
+                task.request_id,
+                candidate,
+                task.task_id
+            );
             matches.push(candidate);
         }
 
         processed = processed.saturating_add(1);
 
         if processed < total && last_progress_report.elapsed() >= progress_interval {
-            let update = WorkerTaskUpdateMessage::Progress {
+            let update = WorkerTaskUpdateMessage {
                 request_id: task.request_id,
                 task_id: task.task_id,
                 processed,
                 total,
+                matches: matches.clone(),
+                error: None,
             };
 
             publish_worker_update(channel, &update).await?;

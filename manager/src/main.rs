@@ -216,16 +216,10 @@ async fn get_status(
         .map_err(|error| ApiError::internal(format!("failed to read status: {error}")))?
         .ok_or_else(|| ApiError::not_found("request not found"))?;
 
-    let data = if !request.data.is_empty() {
-        Some(request.data)
-    } else {
-        None
-    };
-
     Ok(Json(CrackStatusResponse {
         status: request.status,
         progress: request.progress.clamp(0, 100) as u8,
-        data,
+        data: (!request.data.is_empty()).then_some(request.data),
     }))
 }
 
@@ -431,111 +425,106 @@ async fn handle_worker_update_message(state: &AppState, payload: &[u8]) -> anyho
     let message: WorkerTaskUpdateMessage =
         serde_json::from_slice(payload).context("invalid worker update payload")?;
 
-    match message {
-        WorkerTaskUpdateMessage::Progress {
+    let WorkerTaskUpdateMessage {
+        request_id,
+        task_id,
+        processed,
+        total,
+        matches,
+        error,
+    } = message;
+
+    if processed != total && error.is_none() {
+        log::info!(
+            "Request {}: received progress message for task {}, {}/{} processed",
             request_id,
             task_id,
             processed,
-            total,
-        } => {
+            total
+        );
+
+        let update_result = state
+            .tasks
+            .update_one(
+                doc! {
+                    "_id": task_id.to_string(),
+                    "status": { "$in": [TASK_QUEUED, TASK_PENDING_PUBLISH] },
+                },
+                doc! {
+                    "$max": { "processed_candidates": i64::try_from(processed)? },
+                    "$set": {
+                        "total_candidates": i64::try_from(total)?,
+                        "matches": matches,
+                        "updated_at": DateTime::now(),
+                    },
+                },
+            )
+            .await?;
+
+        if update_result.matched_count == 0 {
+            log::warn!("Ignoring stale/duplicate progress for task {task_id}");
+            return Ok(());
+        }
+
+        refresh_request_state(state, request_id, None).await?;
+    } else {
+        if let Some(ref error) = error {
+            log::warn!(
+                "Request {}: received error message for task {}: {}",
+                request_id,
+                task_id,
+                error
+            )
+        } else {
             log::info!(
-                "Request {}: received progress message for task {}, {}/{} processed",
+                "Request {}: received final message for task {}, {}/{} processed",
                 request_id,
                 task_id,
                 processed,
                 total
             );
-
-            let update_result = state
-                .tasks
-                .update_one(
-                    doc! {
-                        "_id": task_id.to_string(),
-                        "status": { "$in": [TASK_QUEUED, TASK_PENDING_PUBLISH] },
-                    },
-                    doc! {
-                        "$max": { "processed_candidates": i64::try_from(processed)? },
-                        "$set": {
-                            "total_candidates": i64::try_from(total)?,
-                            "updated_at": DateTime::now(),
-                        },
-                    },
-                )
-                .await?;
-
-            if update_result.matched_count == 0 {
-                log::warn!("Ignoring stale/duplicate progress for task {task_id}");
-                return Ok(());
-            }
-
-            refresh_request_state(state, request_id, None).await?;
         }
-        WorkerTaskUpdateMessage::Finished {
-            request_id,
-            task_id,
-            processed,
-            total,
-            matches,
-            error,
-        } => {
-            if let Some(ref error) = error {
-                log::warn!(
-                    "Request {}: received error message for task {}: {}",
-                    request_id,
-                    task_id,
-                    error
-                )
-            } else {
-                log::info!(
-                    "Request {}: received final message for task {}, {}/{} processed",
-                    request_id,
-                    task_id,
-                    processed,
-                    total
-                );
+
+        let status = if error.is_some() {
+            TASK_ERROR
+        } else {
+            TASK_DONE
+        };
+
+        let mut set_doc = doc! {
+            "status": status,
+            "matches": matches,
+            "total_candidates": i64::try_from(total)?,
+            "processed_candidates": i64::try_from(processed)?,
+            "updated_at": DateTime::now(),
+        };
+
+        match error.as_ref() {
+            Some(error) => {
+                set_doc.insert("last_error", error.clone());
             }
-
-            let status = if error.is_some() {
-                TASK_ERROR
-            } else {
-                TASK_DONE
-            };
-
-            let mut set_doc = doc! {
-                "status": status,
-                "matches": matches,
-                "total_candidates": i64::try_from(total)?,
-                "processed_candidates": i64::try_from(processed)?,
-                "updated_at": DateTime::now(),
-            };
-
-            match error.as_ref() {
-                Some(error) => {
-                    set_doc.insert("last_error", error.clone());
-                }
-                None => {
-                    set_doc.insert("last_error", Bson::Null);
-                }
+            None => {
+                set_doc.insert("last_error", Bson::Null);
             }
-
-            let update_result = state
-                .tasks
-                .update_one(
-                    doc! {
-                        "_id": task_id.to_string(),
-                        "status": { "$in": [TASK_QUEUED, TASK_PENDING_PUBLISH] },
-                    },
-                    doc! { "$set": set_doc },
-                )
-                .await?;
-
-            if update_result.matched_count == 0 {
-                log::warn!("Ignoring stale/duplicate completion for task {task_id}");
-                return Ok(());
-            }
-
-            refresh_request_state(state, request_id, error.as_deref()).await?;
         }
+
+        let update_result = state
+            .tasks
+            .update_one(
+                doc! {
+                    "_id": task_id.to_string(),
+                    "status": { "$in": [TASK_QUEUED, TASK_PENDING_PUBLISH] },
+                },
+                doc! { "$set": set_doc },
+            )
+            .await?;
+
+        if update_result.matched_count == 0 {
+            log::warn!("Ignoring stale/duplicate completion for task {task_id}");
+            return Ok(());
+        }
+
+        refresh_request_state(state, request_id, error.as_deref()).await?;
     }
 
     Ok(())
@@ -573,18 +562,11 @@ async fn handle_dlq_message(state: &AppState, payload: &[u8]) -> anyhow::Result<
     }
 
     if let Ok(result_message) = serde_json::from_slice::<WorkerTaskUpdateMessage>(payload) {
-        let (request_id, task_id) = match result_message {
-            WorkerTaskUpdateMessage::Progress {
-                request_id,
-                task_id,
-                ..
-            } => (request_id, task_id),
-            WorkerTaskUpdateMessage::Finished {
-                request_id,
-                task_id,
-                ..
-            } => (request_id, task_id),
-        };
+        let WorkerTaskUpdateMessage {
+            request_id,
+            task_id,
+            ..
+        } = result_message;
 
         let task_id = task_id.to_string();
 
@@ -639,8 +621,11 @@ async fn refresh_request_state(
         let task_processed = task.processed_candidates;
 
         match task.status.as_str() {
-            TASK_DONE => {
-                completed += 1;
+            TASK_QUEUED | TASK_PENDING_PUBLISH | TASK_DONE => {
+                if task.status == TASK_DONE {
+                    completed += 1;
+                }
+
                 for value in task.matches {
                     data.insert(value);
                 }
