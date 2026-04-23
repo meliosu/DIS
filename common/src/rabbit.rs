@@ -1,6 +1,6 @@
 use anyhow::Context;
 use lapin::{
-    Channel, ExchangeKind, Connection, ConnectionProperties,
+    Channel, Connection, ConnectionProperties, ExchangeKind,
     options::{ExchangeDeclareOptions, QueueBindOptions, QueueDeclareOptions},
     types::{AMQPValue, FieldTable},
 };

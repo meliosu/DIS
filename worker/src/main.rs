@@ -246,6 +246,14 @@ async fn crack_task(
         return Ok(Vec::new());
     }
 
+    log::info!(
+        "Request {}: Searching range {} to {} in task {}",
+        task.request_id,
+        task.start_index,
+        task.end_index,
+        task.task_id
+    );
+
     let target_hash = task.hash.to_ascii_lowercase();
     let mut matches = Vec::new();
     let mut processed = 0_u64;

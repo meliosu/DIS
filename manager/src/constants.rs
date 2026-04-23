@@ -8,4 +8,4 @@ pub const RESULTS_CONSUMER_TAG: &str = "manager-results-consumer";
 pub const DLQ_CONSUMER_TAG: &str = "manager-dlq-consumer";
 pub const RETRY_DELAY_SECS: u64 = 3;
 
-pub const MONGODB_APP_NAME: &str = "crack-hash";
+pub const MONGODB_APP_NAME: &str = "hash-manager";

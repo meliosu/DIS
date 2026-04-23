@@ -18,9 +18,8 @@ use lapin::{
 use mongodb::{
     Client,
     bson::{Bson, DateTime, doc},
-    options::ClientOptions,
+    options::{ClientOptions, WriteConcern},
 };
-use tokio::{net::TcpListener, time::sleep};
 use uuid::Uuid;
 
 use common::constants::*;
@@ -65,6 +64,7 @@ async fn run() -> anyhow::Result<()> {
         .with_context(|| format!("failed to parse MongoDB URI: {mongo_uri}"))?;
 
     mongo_options.app_name = Some(MONGODB_APP_NAME.to_string());
+    mongo_options.write_concern = Some(WriteConcern::majority());
     let client = Client::with_options(mongo_options)?;
     let db = client.database(&mongo_db);
 
@@ -93,7 +93,7 @@ async fn run() -> anyhow::Result<()> {
         .route("/api/hash/status", get(get_status))
         .with_state(state);
 
-    let listener = TcpListener::bind(&bind_addr)
+    let listener = tokio::net::TcpListener::bind(&bind_addr)
         .await
         .with_context(|| format!("failed to bind manager on {bind_addr}"))?;
 
@@ -152,6 +152,15 @@ async fn crack_hash(
         .await
         .map_err(|error| ApiError::internal(format!("failed to create request: {error}")))?;
 
+    log::info!(
+        "Request {}: searching for hash {} with maximum length of {}, splitting {} combinations into {} tasks",
+        request_id,
+        payload.hash,
+        max_length,
+        total,
+        worker_count
+    );
+
     let mut task_docs = Vec::with_capacity(ranges.len());
     for (start_index, end_index) in ranges {
         let task_id = Uuid::new_v4();
@@ -207,7 +216,7 @@ async fn get_status(
         .map_err(|error| ApiError::internal(format!("failed to read status: {error}")))?
         .ok_or_else(|| ApiError::not_found("request not found"))?;
 
-    let data = if matches!(request.status, RequestStatus::Ready) {
+    let data = if !request.data.is_empty() {
         Some(request.data)
     } else {
         None
@@ -240,7 +249,7 @@ fn spawn_results_consumer(state: AppState) {
                 Err(error) => log::error!("Results consumer failed: {error:#}"),
             }
 
-            sleep(Duration::from_secs(RETRY_DELAY_SECS)).await;
+            tokio::time::sleep(Duration::from_secs(RETRY_DELAY_SECS)).await;
         }
     });
 }
@@ -253,7 +262,7 @@ fn spawn_dlq_consumer(state: AppState) {
                 Err(error) => log::error!("DLQ consumer failed: {error:#}"),
             }
 
-            sleep(Duration::from_secs(RETRY_DELAY_SECS)).await;
+            tokio::time::sleep(Duration::from_secs(RETRY_DELAY_SECS)).await;
         }
     });
 }
@@ -429,7 +438,14 @@ async fn handle_worker_update_message(state: &AppState, payload: &[u8]) -> anyho
             processed,
             total,
         } => {
-            let (processed, total) = normalize_progress_counters(processed, total)?;
+            log::info!(
+                "Request {}: received progress message for task {}, {}/{} processed",
+                request_id,
+                task_id,
+                processed,
+                total
+            );
+
             let update_result = state
                 .tasks
                 .update_one(
@@ -462,7 +478,23 @@ async fn handle_worker_update_message(state: &AppState, payload: &[u8]) -> anyho
             matches,
             error,
         } => {
-            let (processed, total) = normalize_progress_counters(processed, total)?;
+            if let Some(ref error) = error {
+                log::warn!(
+                    "Request {}: received error message for task {}: {}",
+                    request_id,
+                    task_id,
+                    error
+                )
+            } else {
+                log::info!(
+                    "Request {}: received final message for task {}, {}/{} processed",
+                    request_id,
+                    task_id,
+                    processed,
+                    total
+                );
+            }
+
             let status = if error.is_some() {
                 TASK_ERROR
             } else {
@@ -603,19 +635,12 @@ async fn refresh_request_state(
 
     while let Some(task) = cursor.try_next().await? {
         total_tasks += 1;
-        let fallback_total = task.end_index.saturating_sub(task.start_index).max(0);
-        let task_total = if task.total_candidates > 0 {
-            task.total_candidates
-        } else {
-            fallback_total
-        };
-
-        let mut task_processed = task.processed_candidates.clamp(0, task_total);
+        let task_total = task.total_candidates;
+        let task_processed = task.processed_candidates;
 
         match task.status.as_str() {
             TASK_DONE => {
                 completed += 1;
-                task_processed = task_total;
                 for value in task.matches {
                     data.insert(value);
                 }
@@ -691,14 +716,6 @@ fn task_document_to_message(task: &TaskDocument) -> anyhow::Result<CrackTaskMess
 async fn ensure_rabbit_topology(rabbit_addr: &str) -> anyhow::Result<()> {
     let (_connection, channel) = rabbit::connect_channel(rabbit_addr).await?;
     rabbit::declare_topology(&channel).await
-}
-
-fn normalize_progress_counters(processed: u64, total: u64) -> anyhow::Result<(u64, u64)> {
-    if total == 0 {
-        return Err(anyhow!("worker sent progress update with zero total"));
-    }
-
-    Ok((processed.min(total), total))
 }
 
 fn is_valid_md5(hash: &str) -> bool {
