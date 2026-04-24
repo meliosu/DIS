@@ -4,7 +4,32 @@ Distributed MD5 hash cracking system with fault tolerance.
 
 ## Architecture
 
-**TODO**: Architecture Overview
+<p align="center"> <img width="926" height="1565" alt="Untitled-2025-07-17-0055" src="https://github.com/user-attachments/assets/2c042334-740e-4b5d-8262-65628c4ce65f" /> </p>
+
+### Overview
+
+The system consists of a single manager and multiple workers.
+
+When the manager accepts a hash crack request, it is saved to a **MongoDB** collection and split into tasks. The tasks are then passed to workers using **RabbitMQ**.
+
+The manager sends tasks using **Tasks Exchange** which is a direct exchange that just forwards the messages to **Tasks Queue**, from where the workers consume them.
+
+The workers send progress on their respective tasks using **Results Exchange** which is also a direct exchange. The results are consumed by the manager using **Results Queue**. After receiving updates, the request status is updated in the database.
+
+The system is built with fault-tolerance in mind, meaning it can successfully withstand:
+* Stopping the manager
+* Stopping MongoDB replica set primary node
+* Stopping RabbitMQ
+* Stopping any worker (even if it already started a task)
+* Worker crashes: can be tested by sending request for a `bom` word hash (`e2e6c938b1ba54909ea0b0952235bfaa`)
+
+Also, messages that get requeued 3 or more times are automatically put into **Dead Letter Queue**, from where they are consumed by the manager and logged.
+
+The public API is described in [API](#api).
+
+Configuration is done through environment variables. The list of all variables and their description can be found [here](#configuration).
+
+The project can be easily deployed using Docker (see [Docker](#docker) section).
 
 ## API
 
@@ -75,9 +100,9 @@ All configuration is done through environment variables in the `.env` file:
 | `MONGO_URI` | MongoDB replica set URI | `mongodb://mongo1:27017,mongo2:27017,mongo3:27017/?replicaSet=rs0` |
 | `MONGO_DB` | Mongo database name | `crack_hash` |
 | `PROGRESS_REPORT_INTERVAL_MS` | Worker progress report period to manager | `1000` |
-| `WORKER_MAX_CONCURRENCY` | Max tasks processed concurrently by a manager | `4` |
+| `WORKER_MAX_CONCURRENCY` | Max tasks processed concurrently by a worker | `4` |
 
-## Docker deployment
+## Docker
 
 ```bash
 docker compose up --build -d
