@@ -17,10 +17,9 @@ use lapin::{
 };
 use mongodb::{
     Client,
-    bson::{Bson, DateTime, doc},
+    bson::{Bson, DateTime, Uuid, doc},
     options::{ClientOptions, WriteConcern},
 };
-use uuid::Uuid;
 
 use common::constants::*;
 use common::rabbit;
@@ -117,7 +116,7 @@ async fn crack_hash(
         ));
     }
 
-    let request_id = Uuid::new_v4();
+    let request_id = Uuid::new();
     let worker_count = available_worker_count(&state.rabbit_addr, state.fallback_workers).await;
     let max_length = i32::try_from(payload.max_length)
         .map_err(|_| ApiError::bad_request("maxLength is too large"))?;
@@ -133,7 +132,7 @@ async fn crack_hash(
 
     let now = DateTime::now();
     let request_doc = RequestDocument {
-        id: request_id.to_string(),
+        id: request_id,
         hash: payload.hash.clone(),
         max_length,
         status: RequestStatus::InProgress,
@@ -163,14 +162,14 @@ async fn crack_hash(
 
     let mut task_docs = Vec::with_capacity(ranges.len());
     for (start_index, end_index) in ranges {
-        let task_id = Uuid::new_v4();
+        let task_id = Uuid::new();
         let total_candidates = end_index
             .checked_sub(start_index)
             .ok_or_else(|| ApiError::internal("invalid task split boundaries"))?;
 
         task_docs.push(TaskDocument {
-            id: task_id.to_string(),
-            request_id: request_id.to_string(),
+            id: task_id,
+            request_id: request_id,
             hash: payload.hash.clone(),
             max_length,
             alphabet: state.alphabet.clone(),
@@ -201,7 +200,9 @@ async fn crack_hash(
         log::warn!("Unable to publish request {request_id} tasks immediately: {error:#}");
     }
 
-    Ok(Json(CrackHashResponse { request_id }))
+    Ok(Json(CrackHashResponse {
+        request_id: request_id.to_uuid_1(),
+    }))
 }
 
 async fn get_status(
@@ -599,14 +600,12 @@ async fn handle_dlq_message(state: &AppState, payload: &[u8]) -> anyhow::Result<
 
 async fn refresh_request_state(
     state: &AppState,
-    request_id: Uuid,
+    request_id: uuid::Uuid,
     last_error: Option<&str>,
 ) -> anyhow::Result<()> {
-    let request_key = request_id.to_string();
-    let mut cursor = state
-        .tasks
-        .find(doc! { "request_id": &request_key })
-        .await?;
+    let request_id = Uuid::from_uuid_1(request_id);
+
+    let mut cursor = state.tasks.find(doc! { "request_id": &request_id }).await?;
 
     let mut total_tasks = 0_i32;
     let mut completed = 0_i32;
@@ -675,7 +674,7 @@ async fn refresh_request_state(
 
     state
         .requests
-        .update_one(doc! { "_id": request_key }, doc! { "$set": set_doc })
+        .update_one(doc! { "_id": request_id }, doc! { "$set": set_doc })
         .await?;
 
     Ok(())
@@ -683,10 +682,8 @@ async fn refresh_request_state(
 
 fn task_document_to_message(task: &TaskDocument) -> anyhow::Result<CrackTaskMessage> {
     Ok(CrackTaskMessage {
-        request_id: Uuid::parse_str(&task.request_id)
-            .with_context(|| format!("invalid request ID in task {}", task.id))?,
-        task_id: Uuid::parse_str(&task.id)
-            .with_context(|| format!("invalid task ID in task {}", task.id))?,
+        request_id: task.request_id.to_uuid_1(),
+        task_id: task.id.to_uuid_1(),
         hash: task.hash.clone(),
         max_length: usize::try_from(task.max_length)
             .with_context(|| format!("invalid max_length in task {}", task.id))?,

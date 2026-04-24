@@ -1,5 +1,5 @@
 use mongodb::Collection;
-use mongodb::bson::DateTime;
+use mongodb::bson::{DateTime, Uuid};
 use serde::{Deserialize, Serialize};
 
 use common::types::RequestStatus;
@@ -16,7 +16,7 @@ pub struct AppState {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RequestDocument {
     #[serde(rename = "_id")]
-    pub id: String,
+    pub id: Uuid,
     pub hash: String,
     pub max_length: i32,
     pub status: RequestStatus,
@@ -32,8 +32,8 @@ pub struct RequestDocument {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskDocument {
     #[serde(rename = "_id")]
-    pub id: String,
-    pub request_id: String,
+    pub id: Uuid,
+    pub request_id: Uuid,
     pub hash: String,
     pub max_length: i32,
     pub alphabet: String,

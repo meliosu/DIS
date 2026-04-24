@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.102"
 axum = "0.8.9"
+bson = { version = "*", features = ["uuid-1"] }
 env_logger = "0.11.10"
 lapin = "4.5.0"
 log = "0.4.29"
