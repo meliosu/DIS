@@ -222,7 +222,6 @@ async fn handle_task_delivery(
         tokio::time::sleep(Duration::from_secs(RETRY_DELAY_SECS)).await;
     }
 
-    publish_worker_update(channel, &result).await?;
     Ok(())
 }
 
