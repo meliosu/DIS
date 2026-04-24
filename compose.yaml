@@ -53,7 +53,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 3
-      start_period: 10s
+      start_period: 5s
 
   mongo2:
     image: mongo:7
@@ -68,7 +68,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 3
-      start_period: 10s
+      start_period: 5s
 
   mongo3:
     image: mongo:7
@@ -83,7 +83,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 3
-      start_period: 10s
+      start_period: 5s
 
   mongo-init:
     image: mongo:7
@@ -111,7 +111,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 3
-      start_period: 10s
+      start_period: 5s
 
 
 volumes:
