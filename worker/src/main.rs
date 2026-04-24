@@ -211,6 +211,17 @@ async fn handle_task_delivery(
         error: None,
     };
 
+    while let Err(e) = publish_worker_update(channel, &result).await {
+        log::error!(
+            "Request {}: error publishing update for task {}: {:#}",
+            result.request_id,
+            result.task_id,
+            e
+        );
+
+        tokio::time::sleep(Duration::from_secs(RETRY_DELAY_SECS)).await;
+    }
+
     publish_worker_update(channel, &result).await?;
     Ok(())
 }
@@ -295,7 +306,15 @@ async fn crack_task(
                 error: None,
             };
 
-            publish_worker_update(channel, &update).await?;
+            if let Err(e) = publish_worker_update(channel, &update).await {
+                log::error!(
+                    "Request {}: error publishing progress for task {}: {:#}",
+                    task.request_id,
+                    task.task_id,
+                    e
+                );
+            }
+
             last_progress_report = Instant::now();
         }
 
@@ -309,6 +328,14 @@ async fn publish_worker_update(
     channel: &Channel,
     update: &WorkerTaskUpdateMessage,
 ) -> anyhow::Result<()> {
+    log::info!(
+        "Request {}: publishing progress {}/{} for task {}",
+        update.request_id,
+        update.processed,
+        update.total,
+        update.task_id
+    );
+
     let payload = serde_json::to_vec(update)?;
     let confirmation = channel
         .basic_publish(

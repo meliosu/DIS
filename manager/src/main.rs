@@ -209,7 +209,7 @@ async fn get_status(
     State(state): State<AppState>,
     Query(query): Query<CrackStatusRequest>,
 ) -> Result<Json<CrackStatusResponse>, ApiError> {
-    let request_id = query.request_id.to_string();
+    let request_id = Uuid::from_uuid_1(query.request_id);
     let request = state
         .requests
         .find_one(doc! { "_id": request_id })
@@ -265,7 +265,7 @@ fn spawn_dlq_consumer(state: AppState) {
 async fn publish_pending_tasks(state: &AppState, request_id: Option<Uuid>) -> anyhow::Result<()> {
     let mut filter = doc! { "status": TASK_PENDING_PUBLISH };
     if let Some(request_id) = request_id {
-        filter.insert("request_id", request_id.to_string());
+        filter.insert("request_id", request_id);
     }
 
     let mut pending_cursor = state.tasks.find(filter).await?;
@@ -448,14 +448,18 @@ async fn handle_worker_update_message(state: &AppState, payload: &[u8]) -> anyho
             .tasks
             .update_one(
                 doc! {
-                    "_id": task_id.to_string(),
+                    "_id": Uuid::from_uuid_1(task_id),
                     "status": { "$in": [TASK_QUEUED, TASK_PENDING_PUBLISH] },
                 },
                 doc! {
                     "$max": { "processed_candidates": i64::try_from(processed)? },
+                    "$addToSet": {
+                        "matches": {
+                            "$each": matches,
+                        }
+                    },
                     "$set": {
                         "total_candidates": i64::try_from(total)?,
-                        "matches": matches,
                         "updated_at": DateTime::now(),
                     },
                 },
@@ -513,7 +517,7 @@ async fn handle_worker_update_message(state: &AppState, payload: &[u8]) -> anyho
             .tasks
             .update_one(
                 doc! {
-                    "_id": task_id.to_string(),
+                    "_id": Uuid::from_uuid_1(task_id),
                     "status": { "$in": [TASK_QUEUED, TASK_PENDING_PUBLISH] },
                 },
                 doc! { "$set": set_doc },
@@ -536,7 +540,7 @@ async fn handle_dlq_message(state: &AppState, payload: &[u8]) -> anyhow::Result<
     log::error!("DLQ message received: {body}");
 
     if let Ok(task_message) = serde_json::from_slice::<CrackTaskMessage>(payload) {
-        let task_id = task_message.task_id.to_string();
+        let task_id = Uuid::from_uuid_1(task_message.task_id);
 
         state
             .tasks
@@ -569,7 +573,7 @@ async fn handle_dlq_message(state: &AppState, payload: &[u8]) -> anyhow::Result<
             ..
         } = result_message;
 
-        let task_id = task_id.to_string();
+        let task_id = Uuid::from_uuid_1(task_id);
 
         state
             .tasks
